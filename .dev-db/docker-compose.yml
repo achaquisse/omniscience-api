@@ -1,0 +1,18 @@
+services:
+  omniscience-db:
+    image: mariadb:latest
+    container_name: omniscience-db
+    environment:
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: omniscience
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - mariadb_data:/var/lib/mysql
+
+volumes:
+  mariadb_data:

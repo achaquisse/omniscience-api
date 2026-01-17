@@ -1,0 +1,656 @@
+openapi: 3.0.3
+info:
+  title: Omniscience API
+  description: REST API for managing educational data including courses, classes, students, and attendance records
+  version: 1.0.0
+  contact:
+    name: Omniscience API Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from Supabase authentication
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+      required:
+        - error
+
+    Course:
+      type: object
+      properties:
+        ID:
+          type: integer
+          format: uint
+        Name:
+          type: string
+      required:
+        - ID
+        - Name
+
+    Period:
+      type: object
+      properties:
+        ID:
+          type: integer
+          format: uint
+        Start:
+          type: string
+          format: date-time
+        End:
+          type: string
+          format: date-time
+      required:
+        - ID
+        - Start
+        - End
+
+    StudentClass:
+      type: object
+      properties:
+        ID:
+          type: integer
+          format: uint
+        Name:
+          type: string
+        CourseID:
+          type: integer
+          format: uint
+        Course:
+          $ref: '#/components/schemas/Course'
+        PeriodId:
+          type: integer
+          format: uint
+        Period:
+          $ref: '#/components/schemas/Period'
+      required:
+        - ID
+        - Name
+        - CourseID
+        - PeriodId
+
+    Student:
+      type: object
+      properties:
+        ID:
+          type: integer
+          format: uint
+        FirstName:
+          type: string
+        LastName:
+          type: string
+      required:
+        - ID
+        - FirstName
+        - LastName
+
+    Registration:
+      type: object
+      properties:
+        ID:
+          type: integer
+          format: uint
+        Status:
+          type: string
+        StudentID:
+          type: integer
+          format: uint
+        Student:
+          $ref: '#/components/schemas/Student'
+      required:
+        - ID
+        - Status
+        - StudentID
+
+    AttendanceRequest:
+      type: object
+      properties:
+        registration_id:
+          type: integer
+          format: uint
+        date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        status:
+          type: string
+          enum: [PRESENT, ABSENT, LATE, EXCUSED]
+        remarks:
+          type: string
+      required:
+        - registration_id
+        - date
+        - status
+
+    AttendanceResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        registration_id:
+          type: integer
+          format: uint
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        remarks:
+          type: string
+
+    BulkAttendanceResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        records_processed:
+          type: integer
+
+    AttendanceReport:
+      type: object
+      properties:
+        totalDays:
+          type: integer
+        presentCount:
+          type: integer
+        absentCount:
+          type: integer
+        lateCount:
+          type: integer
+        excusedCount:
+          type: integer
+        percentage:
+          type: number
+          format: float
+
+    AttendanceRecord:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        remarks:
+          type: string
+
+    WeeklyTrend:
+      type: object
+      properties:
+        week:
+          type: string
+          example: "2024-W03"
+        totalDays:
+          type: integer
+        presentCount:
+          type: integer
+        percentage:
+          type: number
+          format: float
+
+    MonthlyTrend:
+      type: object
+      properties:
+        month:
+          type: string
+          example: "2024-01"
+        totalDays:
+          type: integer
+        presentCount:
+          type: integer
+        percentage:
+          type: number
+          format: float
+
+    DetailedAttendanceReport:
+      type: object
+      properties:
+        summary:
+          $ref: '#/components/schemas/AttendanceReport'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendanceRecord'
+        weeklyTrends:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyTrend'
+        monthlyTrends:
+          type: array
+          items:
+            $ref: '#/components/schemas/MonthlyTrend'
+
+    StudentClassAttendanceReport:
+      type: object
+      properties:
+        studentClassId:
+          type: integer
+          format: uint
+        studentClassName:
+          type: string
+        summary:
+          $ref: '#/components/schemas/AttendanceReport'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendanceRecord'
+        weeklyTrends:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyTrend'
+        monthlyTrends:
+          type: array
+          items:
+            $ref: '#/components/schemas/MonthlyTrend'
+
+    AggregatedStudentAttendanceReport:
+      type: object
+      properties:
+        overallSummary:
+          $ref: '#/components/schemas/AttendanceReport'
+        byClass:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentClassAttendanceReport'
+
+    StudentAttendanceSummary:
+      type: object
+      properties:
+        studentId:
+          type: integer
+          format: uint
+        studentName:
+          type: string
+        totalDays:
+          type: integer
+        presentCount:
+          type: integer
+        absentCount:
+          type: integer
+        lateCount:
+          type: integer
+        excusedCount:
+          type: integer
+        percentage:
+          type: number
+          format: float
+
+    DailyAttendance:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        totalStudents:
+          type: integer
+        presentCount:
+          type: integer
+        absentCount:
+          type: integer
+        lateCount:
+          type: integer
+        excusedCount:
+          type: integer
+        percentage:
+          type: number
+          format: float
+
+    ClassAttendanceReport:
+      type: object
+      properties:
+        period:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        totalStudents:
+          type: integer
+        overallSummary:
+          $ref: '#/components/schemas/AttendanceReport'
+        studentSummaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentAttendanceSummary'
+        dailyData:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailyAttendance'
+        weeklyData:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyTrend'
+        monthlyData:
+          type: array
+          items:
+            $ref: '#/components/schemas/MonthlyTrend'
+
+security:
+  - bearerAuth: []
+
+paths:
+  /student-classes:
+    get:
+      summary: List student classes
+      description: Returns a list of student classes for courses taught by the authenticated teacher
+      operationId: listStudentClasses
+      tags:
+        - Student Classes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          description: Filter classes with period ending on or after this date
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-01-01"
+        - name: endDate
+          in: query
+          description: Filter classes with period starting on or before this date
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-12-31"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StudentClass'
+        '400':
+          description: Invalid date format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /registrations:
+    get:
+      summary: List registrations
+      description: Returns a list of student registrations for a specific class
+      operationId: listRegistrations
+      tags:
+        - Registrations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: studentClassId
+          in: query
+          description: ID of the student class
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Registration'
+        '400':
+          description: Invalid studentClassId format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Missing or invalid token or user doesn't have permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance:
+    post:
+      summary: Record attendance
+      description: Records or updates attendance for a single student registration
+      operationId: recordAttendance
+      tags:
+        - Attendance
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttendanceRequest'
+      responses:
+        '201':
+          description: Attendance recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendanceResponse'
+        '400':
+          description: Invalid request body or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Registration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/bulk:
+    post:
+      summary: Record bulk attendance
+      description: Records or updates attendance for multiple student registrations in a single transaction
+      operationId: recordBulkAttendance
+      tags:
+        - Attendance
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/AttendanceRequest'
+              minItems: 1
+      responses:
+        '201':
+          description: Bulk attendance recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkAttendanceResponse'
+        '400':
+          description: Invalid request body or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error - All records have been rolled back
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/report:
+    get:
+      summary: Get student attendance report
+      description: |
+        Returns attendance report for a specific student.
+        - If student_class_id is provided: Returns detailed report for that specific class
+        - If student_class_id is not provided: Returns aggregated report grouped by all student classes the student is enrolled in
+      operationId: getStudentAttendanceReport
+      tags:
+        - Attendance
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: student_id
+          in: query
+          description: ID of the student
+          required: true
+          schema:
+            type: integer
+            format: uint32
+        - name: student_class_id
+          in: query
+          description: Optional ID of the student class. If provided, returns report for only that class. If omitted, returns aggregated report by all classes.
+          required: false
+          schema:
+            type: integer
+            format: uint32
+        - name: start_date
+          in: query
+          description: Start date of the report period (defaults to first day of current month)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-01-01"
+        - name: end_date
+          in: query
+          description: End date of the report period (defaults to current date)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-01-31"
+      responses:
+        '200':
+          description: Successful response. Returns DetailedAttendanceReport if student_class_id is provided, or AggregatedStudentAttendanceReport if not provided.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DetailedAttendanceReport'
+                  - $ref: '#/components/schemas/AggregatedStudentAttendanceReport'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/class-report:
+    get:
+      summary: Get class attendance report
+      description: Returns attendance report for an entire class with aggregated data
+      operationId: getClassAttendanceReport
+      tags:
+        - Attendance
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: student_class_id
+          in: query
+          description: ID of the student class
+          required: true
+          schema:
+            type: integer
+            format: uint32
+        - name: start_date
+          in: query
+          description: Start date of the report period (defaults to first day of current month)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-01-01"
+        - name: end_date
+          in: query
+          description: End date of the report period (defaults to current date)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-01-31"
+        - name: period
+          in: query
+          description: Aggregation period for attendance data
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month, all]
+            default: all
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassAttendanceReport'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+tags:
+  - name: Student Classes
+    description: Operations related to student classes
+  - name: Registrations
+    description: Operations related to student registrations
+  - name: Attendance
+    description: Operations related to attendance tracking and reporting
