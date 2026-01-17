@@ -2,7 +2,6 @@ package rest
 
 import (
 	"encoding/json"
-	"skulla-api"
 	"skulla-api/db"
 	"testing"
 
@@ -10,9 +9,9 @@ import (
 )
 
 func TestListRegistrations_Success(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/registrations?studentClassId=1", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/registrations?studentClassId=1", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -32,9 +31,9 @@ func TestListRegistrations_Success(t *testing.T) {
 }
 
 func TestListRegistrations_MissingStudentClassId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/registrations", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/registrations", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -45,9 +44,9 @@ func TestListRegistrations_MissingStudentClassId(t *testing.T) {
 }
 
 func TestListRegistrations_InvalidStudentClassId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/registrations?studentClassId=invalid", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/registrations?studentClassId=invalid", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -58,9 +57,9 @@ func TestListRegistrations_InvalidStudentClassId(t *testing.T) {
 }
 
 func TestListRegistrations_Unauthorized_WrongTeacher(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/registrations?studentClassId=1", main.testTeacherEmail2, nil)
+	resp, err := makeRequest(app, "GET", "/registrations?studentClassId=1", testTeacherEmail2, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}

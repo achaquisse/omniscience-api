@@ -43,7 +43,6 @@ jobs:
         run: go mod download
       
       - name: Run tests
-        working-directory: ./src
         run: |
           chmod +x run_tests.sh
           ./run_tests.sh
@@ -140,3 +139,29 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      
+      - name: Output Docker image names
+        run: |
+          echo "Docker images pushed to registry:"
+          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
+            echo "  - $tag"
+          done
+          echo ""
+          echo "To pull the image locally, run:"
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+          echo "  docker pull $FIRST_TAG"
+          echo ""
+          echo "## Docker Images Published :whale:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following images have been pushed to the registry:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
+            echo "$tag" >> $GITHUB_STEP_SUMMARY
+          done
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To pull the image:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

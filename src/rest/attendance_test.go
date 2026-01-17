@@ -2,7 +2,6 @@ package rest
 
 import (
 	"encoding/json"
-	"skulla-api"
 	"skulla-api/db"
 	"testing"
 
@@ -10,7 +9,7 @@ import (
 )
 
 func TestRecordAttendance_Create_Success(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := map[string]interface{}{
 		"registration_id": 1,
@@ -19,7 +18,7 @@ func TestRecordAttendance_Create_Success(t *testing.T) {
 		"remarks":         "Test attendance",
 	}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -39,7 +38,7 @@ func TestRecordAttendance_Create_Success(t *testing.T) {
 }
 
 func TestRecordAttendance_Update_Success(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := map[string]interface{}{
 		"registration_id": 1,
@@ -48,7 +47,7 @@ func TestRecordAttendance_Update_Success(t *testing.T) {
 		"remarks":         "Updated status",
 	}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -59,13 +58,13 @@ func TestRecordAttendance_Update_Success(t *testing.T) {
 }
 
 func TestRecordAttendance_InvalidRequestBody(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := map[string]interface{}{
 		"registration_id": "invalid",
 	}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -76,7 +75,7 @@ func TestRecordAttendance_InvalidRequestBody(t *testing.T) {
 }
 
 func TestRecordAttendance_MissingRequiredFields(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	testCases := []map[string]interface{}{
 		{"date": "2024-01-20", "status": "PRESENT"},
@@ -85,7 +84,7 @@ func TestRecordAttendance_MissingRequiredFields(t *testing.T) {
 	}
 
 	for i, reqBody := range testCases {
-		resp, err := main.makeRequest(app, "POST", "/attendance", main.testTeacherEmail, reqBody)
+		resp, err := makeRequest(app, "POST", "/attendance", testTeacherEmail, reqBody)
 		if err != nil {
 			t.Fatalf("Request %d failed: %v", i, err)
 		}
@@ -97,7 +96,7 @@ func TestRecordAttendance_MissingRequiredFields(t *testing.T) {
 }
 
 func TestRecordAttendance_InvalidStatus(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := map[string]interface{}{
 		"registration_id": 1,
@@ -106,7 +105,7 @@ func TestRecordAttendance_InvalidStatus(t *testing.T) {
 		"remarks":         "",
 	}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -117,7 +116,7 @@ func TestRecordAttendance_InvalidStatus(t *testing.T) {
 }
 
 func TestRecordAttendance_RegistrationNotFound(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := map[string]interface{}{
 		"registration_id": 9999,
@@ -126,7 +125,7 @@ func TestRecordAttendance_RegistrationNotFound(t *testing.T) {
 		"remarks":         "",
 	}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -137,7 +136,7 @@ func TestRecordAttendance_RegistrationNotFound(t *testing.T) {
 }
 
 func TestRecordBulkAttendance_Success(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := []map[string]interface{}{
 		{
@@ -160,7 +159,7 @@ func TestRecordBulkAttendance_Success(t *testing.T) {
 		},
 	}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance/bulk", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance/bulk", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -180,11 +179,11 @@ func TestRecordBulkAttendance_Success(t *testing.T) {
 }
 
 func TestRecordBulkAttendance_EmptyArray(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := []map[string]interface{}{}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance/bulk", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance/bulk", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -195,7 +194,7 @@ func TestRecordBulkAttendance_EmptyArray(t *testing.T) {
 }
 
 func TestRecordBulkAttendance_InvalidRecord(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
 	reqBody := []map[string]interface{}{
 		{
@@ -210,7 +209,7 @@ func TestRecordBulkAttendance_InvalidRecord(t *testing.T) {
 		},
 	}
 
-	resp, err := main.makeRequest(app, "POST", "/attendance/bulk", main.testTeacherEmail, reqBody)
+	resp, err := makeRequest(app, "POST", "/attendance/bulk", testTeacherEmail, reqBody)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -221,9 +220,9 @@ func TestRecordBulkAttendance_InvalidRecord(t *testing.T) {
 }
 
 func TestGetStudentAttendanceReport_WithClassId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/report?student_id=1&student_class_id=1&start_date=2024-01-01&end_date=2024-01-31", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/report?student_id=1&student_class_id=1&start_date=2024-01-01&end_date=2024-01-31", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -247,9 +246,9 @@ func TestGetStudentAttendanceReport_WithClassId(t *testing.T) {
 }
 
 func TestGetStudentAttendanceReport_WithoutClassId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/report?student_id=1&start_date=2024-01-01&end_date=2024-01-31", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/report?student_id=1&start_date=2024-01-01&end_date=2024-01-31", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -273,9 +272,9 @@ func TestGetStudentAttendanceReport_WithoutClassId(t *testing.T) {
 }
 
 func TestGetStudentAttendanceReport_MissingStudentId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/report", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/report", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -286,9 +285,9 @@ func TestGetStudentAttendanceReport_MissingStudentId(t *testing.T) {
 }
 
 func TestGetStudentAttendanceReport_InvalidStudentId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/report?student_id=invalid", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/report?student_id=invalid", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -299,9 +298,9 @@ func TestGetStudentAttendanceReport_InvalidStudentId(t *testing.T) {
 }
 
 func TestGetStudentAttendanceReport_InvalidDateFormat(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/report?student_id=1&start_date=invalid-date", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/report?student_id=1&start_date=invalid-date", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -312,9 +311,9 @@ func TestGetStudentAttendanceReport_InvalidDateFormat(t *testing.T) {
 }
 
 func TestGetClassAttendanceReport_Success(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&start_date=2024-01-01&end_date=2024-01-31", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&start_date=2024-01-01&end_date=2024-01-31", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -338,9 +337,9 @@ func TestGetClassAttendanceReport_Success(t *testing.T) {
 }
 
 func TestGetClassAttendanceReport_WithPeriodDay(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&start_date=2024-01-01&end_date=2024-01-31&period=day", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&start_date=2024-01-01&end_date=2024-01-31&period=day", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -364,9 +363,9 @@ func TestGetClassAttendanceReport_WithPeriodDay(t *testing.T) {
 }
 
 func TestGetClassAttendanceReport_WithPeriodWeek(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&period=week", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&period=week", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -386,9 +385,9 @@ func TestGetClassAttendanceReport_WithPeriodWeek(t *testing.T) {
 }
 
 func TestGetClassAttendanceReport_WithPeriodMonth(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&period=month", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&period=month", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -408,9 +407,9 @@ func TestGetClassAttendanceReport_WithPeriodMonth(t *testing.T) {
 }
 
 func TestGetClassAttendanceReport_InvalidPeriod(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&period=invalid", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/class-report?student_class_id=1&period=invalid", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -421,9 +420,9 @@ func TestGetClassAttendanceReport_InvalidPeriod(t *testing.T) {
 }
 
 func TestGetClassAttendanceReport_MissingStudentClassId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/class-report", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/class-report", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -434,9 +433,9 @@ func TestGetClassAttendanceReport_MissingStudentClassId(t *testing.T) {
 }
 
 func TestGetClassAttendanceReport_InvalidStudentClassId(t *testing.T) {
-	app := main.setupTestApp(t)
+	app := setupTestApp(t)
 
-	resp, err := main.makeRequest(app, "GET", "/attendance/class-report?student_class_id=invalid", main.testTeacherEmail, nil)
+	resp, err := makeRequest(app, "GET", "/attendance/class-report?student_class_id=invalid", testTeacherEmail, nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}

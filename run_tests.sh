@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "Running integration tests..."
-go test -v -run Test .
+cd src && go test -v ./...
 
 exit_code=$?
 
