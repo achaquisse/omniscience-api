@@ -189,9 +189,10 @@ jobs:
         run: |
           # Recreate container with new image using Portainer API
           curl -k -X POST \
-            "${{ secrets.PORTAINER_URL }}/api/endpoints/${{ secrets.PORTAINER_ENDPOINT_ID }}/docker/containers/${{ secrets.PORTAINER_CONTAINER_ID }}/recreate?pullImage=true" \
+            "${{ secrets.PORTAINER_URL }}/api/endpoints/${{ secrets.PORTAINER_ENDPOINT_ID }}/docker/containers/${{ secrets.PORTAINER_CONTAINER_ID }}/recreate" \
             -H "X-API-Key: ${{ secrets.PORTAINER_API_KEY }}" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json" \
+            -d '{"PullImage": true}'
           
           echo "## Deployment Triggered :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
