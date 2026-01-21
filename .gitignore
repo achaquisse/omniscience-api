@@ -44,6 +44,7 @@ logs/
 *.sqlite
 *.sqlite3
 .dev-db/mariadb_data/
+.dev-db/init.sql
 
 # Temporary files
 tmp/
