@@ -110,6 +110,10 @@ func GetUserEmailFromToken(c *fiber.Ctx) (string, error) {
 }
 
 func AuthMiddleware(c *fiber.Ctx) error {
+	if c.Method() == "OPTIONS" {
+		return c.Next()
+	}
+
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
 		return ReturnUnauthorized(c, "Missing authorization header")
