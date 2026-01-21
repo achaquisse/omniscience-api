@@ -11,7 +11,6 @@ type StudentClass struct {
 	Course   Course `gorm:"foreignKey:CourseID"`
 	PeriodId uint   `gorm:"foreignKey:PeriodID"`
 	Period   Period `gorm:"foreignKey:PeriodID"`
-	Disabled bool   `gorm:"column:disabled;type:TINYINT(1);default:0"`
 }
 
 func (StudentClass) TableName() string {
@@ -32,7 +31,7 @@ func ListStudentClasses(courseIds []uint, startDate *time.Time, endDate *time.Ti
 	var studentClass []StudentClass
 
 	query := db.Preload("Course").Preload("Period")
-	query = query.Where("disabled = ?", false).Where("course_id IN ?", courseIds)
+	query = query.Where("course_id IN ?", courseIds)
 
 	if startDate != nil || endDate != nil {
 		query = query.Joins("Period")

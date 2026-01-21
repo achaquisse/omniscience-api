@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -67,10 +68,10 @@ func seedTestData(testDB *gorm.DB) error {
 	}
 
 	studentClasses := []db.StudentClass{
-		{ID: 1, Name: "Math 101", CourseID: 1, PeriodId: 1, Disabled: false},
-		{ID: 2, Name: "Math 102", CourseID: 1, PeriodId: 2, Disabled: false},
-		{ID: 3, Name: "Physics 101", CourseID: 2, PeriodId: 1, Disabled: false},
-		{ID: 4, Name: "Chemistry 101", CourseID: 3, PeriodId: 1, Disabled: false},
+		{ID: 1, Name: "Math 101", CourseID: 1, PeriodId: 1},
+		{ID: 2, Name: "Math 102", CourseID: 1, PeriodId: 2},
+		{ID: 3, Name: "Physics 101", CourseID: 2, PeriodId: 1},
+		{ID: 4, Name: "Chemistry 101", CourseID: 3, PeriodId: 1},
 	}
 	for _, class := range studentClasses {
 		if err := testDB.Create(&class).Error; err != nil {
@@ -121,7 +122,11 @@ func seedTestData(testDB *gorm.DB) error {
 }
 
 func setupTestApp(t *testing.T) *fiber.App {
-	os.Setenv("TEST_MODE", "true")
+	err := os.Setenv("TEST_MODE", "true")
+	if err != nil {
+		log.Error(err.Error())
+		return nil
+	}
 
 	testDB, err := setupTestDB()
 	if err != nil {
