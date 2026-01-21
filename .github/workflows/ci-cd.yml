@@ -144,12 +144,14 @@ jobs:
         id: output
         run: |
           echo "Docker images pushed to registry:"
-          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
-            echo "  - $tag"
+          echo "${{ steps.meta.outputs.tags }}" | while read tag; do
+            if [ -n "$tag" ]; then
+              echo "  - $tag"
+            fi
           done
           echo ""
           echo "To pull the image locally, run:"
-          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
           echo "  docker pull $FIRST_TAG"
           echo "image_tag=$FIRST_TAG" >> $GITHUB_OUTPUT
           echo ""
@@ -158,8 +160,10 @@ jobs:
           echo "The following images have been pushed to the registry:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
-            echo "$tag" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" | while read tag; do
+            if [ -n "$tag" ]; then
+              echo "$tag" >> $GITHUB_STEP_SUMMARY
+            fi
           done
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
