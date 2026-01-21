@@ -141,6 +141,7 @@ jobs:
           cache-to: type=gha,mode=max
       
       - name: Output Docker image names
+        id: output
         run: |
           echo "Docker images pushed to registry:"
           echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | while read tag; do
@@ -150,6 +151,7 @@ jobs:
           echo "To pull the image locally, run:"
           FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
           echo "  docker pull $FIRST_TAG"
+          echo "image_tag=$FIRST_TAG" >> $GITHUB_OUTPUT
           echo ""
           echo "## Docker Images Published :whale:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -165,3 +167,29 @@ jobs:
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "docker pull $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+    
+    outputs:
+      image_tag: ${{ steps.output.outputs.image_tag }}
+
+  deploy-to-portainer:
+    name: Deploy to Portainer
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: ${{ vars.PORTAINER_URL }}
+    
+    steps:
+      - name: Deploy to Portainer via API
+        run: |
+          # Recreate container with new image using Portainer API
+          curl -k -X POST \
+            "${{ secrets.PORTAINER_URL }}/api/endpoints/${{ secrets.PORTAINER_ENDPOINT_ID }}/docker/containers/${{ secrets.PORTAINER_CONTAINER_ID }}/recreate?pullImage=true" \
+            -H "X-API-Key: ${{ secrets.PORTAINER_API_KEY }}" \
+            -H "Content-Type: application/json"
+          
+          echo "## Deployment Triggered :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Container redeployment has been triggered on Portainer" >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ needs.build-and-push.outputs.image_tag }}" >> $GITHUB_STEP_SUMMARY
