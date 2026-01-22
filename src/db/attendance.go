@@ -9,46 +9,38 @@ import (
 )
 
 type Attendance struct {
-	ID             uint      `gorm:"primaryKey;autoIncrement"`
-	RegistrationID uint      `gorm:"not null;index:idx_registration_id;uniqueIndex:unique_registration_date"`
+	ID             uint         `gorm:"primaryKey;autoIncrement"`
+	RegistrationID uint         `gorm:"not null;index:idx_registration_id;uniqueIndex:unique_registration_date"`
 	Registration   Registration `gorm:"foreignKey:RegistrationID"`
-	Date           string    `gorm:"type:date;not null;index:idx_date;uniqueIndex:unique_registration_date"`
-	Status         string    `gorm:"size:20;not null;index:idx_status"`
-	Remarks        string    `gorm:"type:text"`
-	CreatedAt      time.Time `gorm:"autoCreateTime"`
-	UpdatedAt      time.Time `gorm:"autoUpdateTime"`
+	Date           string       `gorm:"type:date;not null;index:idx_date;uniqueIndex:unique_registration_date"`
+	Status         string       `gorm:"size:20;not null;index:idx_status"`
+	Remarks        string       `gorm:"type:text"`
+	CreatedBy      string       `gorm:"size:500"`
+	UpdatedBy      string       `gorm:"size:500"`
+	CreatedAt      time.Time    `gorm:"autoCreateTime"`
+	UpdatedAt      time.Time    `gorm:"autoUpdateTime"`
 }
 
 func (Attendance) TableName() string {
 	return "Attendance"
 }
 
-func CreateOrUpdateAttendance(registrationID uint, date string, status string, remarks string) error {
+func CreateOrUpdateAttendance(registrationID uint, date string, status string, remarks string, userEmail string) error {
 	attendance := Attendance{
 		RegistrationID: registrationID,
 		Date:           date,
 		Status:         status,
 		Remarks:        remarks,
+		CreatedBy:      userEmail,
+		UpdatedBy:      userEmail,
 	}
 
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "registration_id"}, {Name: "date"}},
-		DoUpdates: clause.AssignmentColumns([]string{"status", "remarks", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"status", "remarks", "updated_by", "updated_at"}),
 	}).Create(&attendance)
 
 	return result.Error
-}
-
-func GetAttendanceByDate(date string, studentClassID uint) []Attendance {
-	var attendances []Attendance
-
-	db.Preload("Registration.Student").
-		Joins("JOIN Registration ON Registration.id = Attendance.registration_id").
-		Where("Attendance.date = ?", date).
-		Where("Registration.student_class_id = ?", studentClassID).
-		Find(&attendances)
-
-	return attendances
 }
 
 type AttendanceReport struct {
@@ -121,9 +113,9 @@ type DetailedAttendanceReport struct {
 }
 
 type StudentClassAttendanceReport struct {
-	StudentClassID   uint             `json:"studentClassId"`
-	StudentClassName string           `json:"studentClassName"`
-	Summary          AttendanceReport `json:"summary"`
+	StudentClassID   uint               `json:"studentClassId"`
+	StudentClassName string             `json:"studentClassName"`
+	Summary          AttendanceReport   `json:"summary"`
 	Records          []AttendanceRecord `json:"records"`
 	WeeklyTrends     []WeeklyTrend      `json:"weeklyTrends"`
 	MonthlyTrends    []MonthlyTrend     `json:"monthlyTrends"`
@@ -349,6 +341,7 @@ type BulkAttendanceRecord struct {
 	Date           string
 	Status         string
 	Remarks        string
+	UserEmail      string
 }
 
 func CreateOrUpdateBulkAttendance(records []BulkAttendanceRecord) error {
@@ -359,11 +352,13 @@ func CreateOrUpdateBulkAttendance(records []BulkAttendanceRecord) error {
 				Date:           record.Date,
 				Status:         record.Status,
 				Remarks:        record.Remarks,
+				CreatedBy:      record.UserEmail,
+				UpdatedBy:      record.UserEmail,
 			}
 
 			result := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "registration_id"}, {Name: "date"}},
-				DoUpdates: clause.AssignmentColumns([]string{"status", "remarks", "updated_at"}),
+				DoUpdates: clause.AssignmentColumns([]string{"status", "remarks", "updated_by", "updated_at"}),
 			}).Create(&attendance)
 
 			if result.Error != nil {
@@ -386,13 +381,13 @@ type StudentAttendanceSummary struct {
 }
 
 type DailyAttendance struct {
-	Date         string `json:"date"`
-	TotalStudents int    `json:"totalStudents"`
-	PresentCount int     `json:"presentCount"`
-	AbsentCount  int     `json:"absentCount"`
-	LateCount    int     `json:"lateCount"`
-	ExcusedCount int     `json:"excusedCount"`
-	Percentage   float64 `json:"percentage"`
+	Date          string  `json:"date"`
+	TotalStudents int     `json:"totalStudents"`
+	PresentCount  int     `json:"presentCount"`
+	AbsentCount   int     `json:"absentCount"`
+	LateCount     int     `json:"lateCount"`
+	ExcusedCount  int     `json:"excusedCount"`
+	Percentage    float64 `json:"percentage"`
 }
 
 type ClassAttendanceReport struct {

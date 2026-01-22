@@ -55,7 +55,12 @@ func RecordAttendance(c *fiber.Ctx) error {
 		return ReturnBadRequest(c, err.Error())
 	}
 
-	err := db.CreateOrUpdateAttendance(req.RegistrationID, req.Date, req.Status, req.Remarks)
+	userEmail, err := GetUserEmailFromToken(c)
+	if err != nil {
+		return ReturnUnauthorized(c, "Unable to extract user email from token")
+	}
+
+	err = db.CreateOrUpdateAttendance(req.RegistrationID, req.Date, req.Status, req.Remarks, userEmail)
 	if err != nil {
 		log.Error(err)
 		return ReturnInternalError(c, "Failed to record attendance")
@@ -86,6 +91,11 @@ func RecordBulkAttendance(c *fiber.Ctx) error {
 		}
 	}
 
+	userEmail, err := GetUserEmailFromToken(c)
+	if err != nil {
+		return ReturnUnauthorized(c, "Unable to extract user email from token")
+	}
+
 	var bulkRecords []db.BulkAttendanceRecord
 	for _, req := range requests {
 		bulkRecords = append(bulkRecords, db.BulkAttendanceRecord{
@@ -93,10 +103,11 @@ func RecordBulkAttendance(c *fiber.Ctx) error {
 			Date:           req.Date,
 			Status:         req.Status,
 			Remarks:        req.Remarks,
+			UserEmail:      userEmail,
 		})
 	}
 
-	err := db.CreateOrUpdateBulkAttendance(bulkRecords)
+	err = db.CreateOrUpdateBulkAttendance(bulkRecords)
 	if err != nil {
 		log.Error(err)
 		return ReturnInternalError(c, "Failed to record bulk attendance. All records have been rolled back.")
