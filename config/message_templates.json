@@ -1,0 +1,24 @@
+{
+  "excellent": {
+    "threshold": 100,
+    "pt": "[Nome]: Assiduidade de 100% em [Curso]. Excelente compromisso! Continua focado e parabéns pelo esforço nesta semana.",
+    "en": "[Name]: 100% attendance in [Course]. Great commitment! Keep up the focus and congrats on your effort this week."
+  },
+  "good": {
+    "min_threshold": 80,
+    "max_threshold": 99,
+    "pt": "[Nome]: Assiduidade de [X]% em [Curso]. Bom trabalho, mas não baixes a guarda. Mantém a consistência na próxima semana!",
+    "en": "[Name]: [X]% attendance in [Course]. Good job, but don't drop your guard. Stay consistent next week!"
+  },
+  "warning": {
+    "min_threshold": 50,
+    "max_threshold": 79,
+    "pt": "[Nome]: Assiduidade de [X]% em [Curso]. Atenção: as tuas faltas estão a aumentar. Contamos contigo na sala na próxima aula!",
+    "en": "[Name]: [X]% attendance in [Course]. Warning: your absences are increasing. We expect to see you in class next session!"
+  },
+  "critical": {
+    "max_threshold": 49,
+    "pt": "[Nome]: ALERTA! Assiduidade crítica de [X]% em [Curso]. Risco de reprovação por faltas. Regulariza a tua situação urgente.",
+    "en": "[Name]: ALERT! Critical attendance of [X]% in [Course]. Risk of failure due to absences. Please resolve this urgently."
+  }
+}

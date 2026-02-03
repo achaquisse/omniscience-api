@@ -16,6 +16,7 @@ type Student struct {
 	ID        uint   `gorm:"primaryKey"`
 	FirstName string `gorm:"column:firstName;size:255"`
 	LastName  string `gorm:"column:lastName;size:255"`
+	Phone     string `gorm:"column:phone;size:255"`
 }
 
 func (Student) TableName() string {

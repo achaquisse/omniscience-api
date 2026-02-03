@@ -73,3 +73,7 @@ func dbPassword() string {
 func SetDB(database *gorm.DB) {
 	db = database
 }
+
+func DB() *gorm.DB {
+	return db
+}

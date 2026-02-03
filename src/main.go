@@ -3,26 +3,27 @@ package main
 import (
 	"skulla-api/db"
 	"skulla-api/rest"
+	"skulla-api/scheduler"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
-	// Connects to database server
 	db.Connect()
 
-	// Instantiate web server
+	scheduler.InitAttendanceScheduler()
+	defer scheduler.StopScheduler()
+
 	app := fiber.New()
 
-	// Configure CORS
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
-	rest.Init(app) //Init rest endpoints
+	rest.Init(app)
 	err := app.Listen(":8080")
 	if err != nil {
 		return
