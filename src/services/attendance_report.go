@@ -71,7 +71,7 @@ func GetActiveRegistrationsWithAttendance(startDate, endDate time.Time) ([]Stude
 			percentage = math.Round((float64(presentCount) / float64(totalDays)) * 100)
 		}
 
-		if reg.Student.FirstName == "" && reg.Student.LastName == "" {
+		if reg.Student.FirstName == "" {
 			continue
 		}
 
@@ -79,12 +79,10 @@ func GetActiveRegistrationsWithAttendance(startDate, endDate time.Time) ([]Stude
 			continue
 		}
 
-		studentName := strings.TrimSpace(reg.Student.FirstName + " " + reg.Student.LastName)
-
 		results = append(results, StudentAttendanceInfo{
 			RegistrationID: reg.ID,
 			StudentID:      reg.StudentID,
-			StudentName:    studentName,
+			StudentName:    reg.Student.FirstName,
 			PhoneNumber:    reg.Student.Phone,
 			CourseName:     studentClass.Course.Name,
 			Percentage:     percentage,
