@@ -339,6 +339,78 @@ components:
           items:
             $ref: '#/components/schemas/MonthlyTrend'
 
+    MessageResult:
+      type: object
+      properties:
+        student_id:
+          type: integer
+          format: uint
+        student_name:
+          type: string
+        phone_number:
+          type: string
+        course_name:
+          type: string
+        percentage:
+          type: number
+          format: float
+        message:
+          type: string
+        success:
+          type: boolean
+        error_message:
+          type: string
+
+    TriggerReportsDryRunResponse:
+      type: object
+      properties:
+        dry_run:
+          type: boolean
+          example: true
+        start_date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        end_date:
+          type: string
+          format: date
+          example: "2024-01-21"
+        total_messages:
+          type: integer
+        messages_planned:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageResult'
+
+    TriggerReportsResponse:
+      type: object
+      properties:
+        dry_run:
+          type: boolean
+          example: false
+        start_date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        end_date:
+          type: string
+          format: date
+          example: "2024-01-21"
+        total_messages:
+          type: integer
+        success_count:
+          type: integer
+        failure_count:
+          type: integer
+        messages_sent:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageResult'
+        messages_failed:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageResult'
+
 security:
   - bearerAuth: []
 
@@ -642,6 +714,67 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/trigger-reports:
+    post:
+      summary: Trigger attendance reports
+      description: Manually trigger sending attendance reports for a specified date range with optional dry-run mode
+      operationId: triggerAttendanceReports
+      tags:
+        - Attendance
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dry_run
+          in: query
+          description: If true, shows planned messages without actually sending them
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: start_date
+          in: query
+          description: Start date of the report period (defaults to last Sunday)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-01-15"
+        - name: end_date
+          in: query
+          description: End date of the report period (defaults to last Saturday)
+          required: false
+          schema:
+            type: string
+            format: date
+            example: "2024-01-21"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TriggerReportsDryRunResponse'
+                  - $ref: '#/components/schemas/TriggerReportsResponse'
+        '400':
+          description: Invalid date format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:

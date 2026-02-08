@@ -3,6 +3,8 @@ package rest
 import (
 	"fmt"
 	"skulla-api/db"
+	"skulla-api/services"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/log"
@@ -188,4 +190,79 @@ func GetClassAttendanceReport(c *fiber.Ctx) error {
 	report := db.GetClassAttendanceReport(studentClassID, startDate, endDate, period)
 
 	return c.JSON(report)
+}
+
+func TriggerAttendanceReports(c *fiber.Ctx) error {
+	dryRun := c.QueryBool("dry_run", false)
+
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+
+	var startDate, endDate time.Time
+	var err error
+
+	if startDateStr == "" || endDateStr == "" {
+		now := time.Now()
+		weekday := int(now.Weekday())
+
+		daysToSubtract := weekday
+		if weekday == 0 {
+			daysToSubtract = 7
+		}
+
+		lastSunday := now.AddDate(0, 0, -daysToSubtract)
+		lastSaturday := lastSunday.AddDate(0, 0, 6)
+
+		startDate = time.Date(lastSunday.Year(), lastSunday.Month(), lastSunday.Day(), 0, 0, 0, 0, lastSunday.Location())
+		endDate = time.Date(lastSaturday.Year(), lastSaturday.Month(), lastSaturday.Day(), 23, 59, 59, 0, lastSaturday.Location())
+	} else {
+		if err := ValidateDateString(startDateStr, "start_date"); err != nil {
+			return ReturnBadRequest(c, err.Error())
+		}
+		if err := ValidateDateString(endDateStr, "end_date"); err != nil {
+			return ReturnBadRequest(c, err.Error())
+		}
+
+		startDate, err = time.Parse("2006-01-02", startDateStr)
+		if err != nil {
+			return ReturnBadRequest(c, "Invalid start_date format")
+		}
+
+		endDate, err = time.Parse("2006-01-02", endDateStr)
+		if err != nil {
+			return ReturnBadRequest(c, "Invalid end_date format")
+		}
+
+		endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, endDate.Location())
+	}
+
+	students, err := services.GetActiveRegistrationsWithAttendance(startDate, endDate)
+	if err != nil {
+		log.Error(err)
+		return ReturnInternalError(c, "Failed to fetch attendance data")
+	}
+
+	result, err := services.SendAttendanceReportsWithResult(students, dryRun)
+	if err != nil {
+		log.Error(err)
+		return ReturnInternalError(c, "Failed to process attendance reports")
+	}
+
+	response := fiber.Map{
+		"dry_run":        dryRun,
+		"start_date":     startDate.Format("2006-01-02"),
+		"end_date":       endDate.Format("2006-01-02"),
+		"total_messages": result.TotalMessages,
+	}
+
+	if dryRun {
+		response["messages_planned"] = result.MessagesPlanned
+	} else {
+		response["success_count"] = result.SuccessCount
+		response["failure_count"] = result.FailureCount
+		response["messages_sent"] = result.MessagesSent
+		response["messages_failed"] = result.MessagesFailed
+	}
+
+	return c.JSON(response)
 }

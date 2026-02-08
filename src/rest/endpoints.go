@@ -14,6 +14,7 @@ func Init(app *fiber.App) {
 	app.Post("/attendance/bulk", AuthMiddleware, RecordBulkAttendance)
 	app.Get("/attendance/report", AuthMiddleware, GetStudentAttendanceReport)
 	app.Get("/attendance/class-report", AuthMiddleware, GetClassAttendanceReport)
+	app.Post("/attendance/trigger-reports", AuthMiddleware, TriggerAttendanceReports)
 
 	log.Info("REST API started")
 }

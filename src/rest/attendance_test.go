@@ -444,3 +444,126 @@ func TestGetClassAttendanceReport_InvalidStudentClassId(t *testing.T) {
 		t.Errorf("Expected status 400, got %d", resp.Code)
 	}
 }
+
+func TestTriggerAttendanceReports_DryRun(t *testing.T) {
+	app := setupTestApp(t)
+
+	resp, err := makeRequest(app, "POST", "/attendance/trigger-reports?dry_run=true&start_date=2024-01-15&end_date=2024-01-17", testTeacherEmail, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	if resp.Code != fiber.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", resp.Code, resp.Body.String())
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(resp.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if response["dry_run"] != true {
+		t.Errorf("Expected dry_run to be true, got %v", response["dry_run"])
+	}
+
+	if response["start_date"] != "2024-01-15" {
+		t.Errorf("Expected start_date 2024-01-15, got %v", response["start_date"])
+	}
+
+	if response["end_date"] != "2024-01-17" {
+		t.Errorf("Expected end_date 2024-01-17, got %v", response["end_date"])
+	}
+
+	if _, ok := response["messages_planned"]; !ok {
+		t.Error("Expected messages_planned in response")
+	}
+
+	if _, ok := response["messages_sent"]; ok {
+		t.Error("Expected no messages_sent in dry run response")
+	}
+}
+
+func TestTriggerAttendanceReports_DefaultDateRange(t *testing.T) {
+	app := setupTestApp(t)
+
+	resp, err := makeRequest(app, "POST", "/attendance/trigger-reports?dry_run=true", testTeacherEmail, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	if resp.Code != fiber.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", resp.Code, resp.Body.String())
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(resp.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if _, ok := response["start_date"]; !ok {
+		t.Error("Expected start_date in response")
+	}
+
+	if _, ok := response["end_date"]; !ok {
+		t.Error("Expected end_date in response")
+	}
+
+	if response["dry_run"] != true {
+		t.Errorf("Expected dry_run to be true, got %v", response["dry_run"])
+	}
+}
+
+func TestTriggerAttendanceReports_InvalidDateFormat(t *testing.T) {
+	app := setupTestApp(t)
+
+	resp, err := makeRequest(app, "POST", "/attendance/trigger-reports?start_date=invalid&end_date=2024-01-17", testTeacherEmail, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	if resp.Code != fiber.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d. Body: %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestTriggerAttendanceReports_WithSending(t *testing.T) {
+	app := setupTestApp(t)
+
+	resp, err := makeRequest(app, "POST", "/attendance/trigger-reports?dry_run=false&start_date=2024-01-15&end_date=2024-01-17", testTeacherEmail, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	if resp.Code != fiber.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", resp.Code, resp.Body.String())
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(resp.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if response["dry_run"] != false {
+		t.Errorf("Expected dry_run to be false, got %v", response["dry_run"])
+	}
+
+	if _, ok := response["success_count"]; !ok {
+		t.Error("Expected success_count in response")
+	}
+
+	if _, ok := response["failure_count"]; !ok {
+		t.Error("Expected failure_count in response")
+	}
+
+	if _, ok := response["messages_sent"]; !ok {
+		t.Error("Expected messages_sent in response")
+	}
+
+	if _, ok := response["messages_failed"]; !ok {
+		t.Error("Expected messages_failed in response")
+	}
+
+	if _, ok := response["messages_planned"]; ok {
+		t.Error("Expected no messages_planned in non-dry run response")
+	}
+}

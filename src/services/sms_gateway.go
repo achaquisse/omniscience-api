@@ -85,32 +85,98 @@ func (c *SMSGatewayClient) SendSMS(phoneNumber, message string) error {
 	return nil
 }
 
-func SendAttendanceReports(students []StudentAttendanceInfo) error {
+type MessageResult struct {
+	StudentID    uint    `json:"student_id"`
+	StudentName  string  `json:"student_name"`
+	PhoneNumber  string  `json:"phone_number"`
+	CourseName   string  `json:"course_name"`
+	Percentage   float64 `json:"percentage"`
+	Message      string  `json:"message"`
+	Success      bool    `json:"success"`
+	ErrorMessage string  `json:"error_message,omitempty"`
+}
+
+type SendReportResult struct {
+	TotalMessages   int             `json:"total_messages"`
+	SuccessCount    int             `json:"success_count"`
+	FailureCount    int             `json:"failure_count"`
+	MessagesSent    []MessageResult `json:"messages_sent"`
+	MessagesFailed  []MessageResult `json:"messages_failed"`
+	MessagesPlanned []MessageResult `json:"messages_planned,omitempty"`
+}
+
+func SendAttendanceReportsWithResult(students []StudentAttendanceInfo, dryRun bool) (*SendReportResult, error) {
+	result := &SendReportResult{
+		TotalMessages:   len(students),
+		MessagesSent:    []MessageResult{},
+		MessagesFailed:  []MessageResult{},
+		MessagesPlanned: []MessageResult{},
+	}
+
 	client := NewSMSGatewayClient()
-	successCount := 0
-	failCount := 0
 
 	for _, student := range students {
 		template := GetMessageTemplate(student.Percentage, student.CourseName)
 		if template == "" {
-			fmt.Printf("Failed to get template for student %s\n", student.StudentName)
-			failCount++
+			msgResult := MessageResult{
+				StudentID:    student.StudentID,
+				StudentName:  student.StudentName,
+				PhoneNumber:  student.PhoneNumber,
+				CourseName:   student.CourseName,
+				Percentage:   student.Percentage,
+				Success:      false,
+				ErrorMessage: "Failed to get message template",
+			}
+			if dryRun {
+				result.MessagesPlanned = append(result.MessagesPlanned, msgResult)
+			} else {
+				result.MessagesFailed = append(result.MessagesFailed, msgResult)
+				result.FailureCount++
+			}
 			continue
 		}
 
 		message := FormatMessage(template, student.StudentName, student.CourseName, student.Percentage)
 
-		err := client.SendSMS(student.PhoneNumber, message)
-		if err != nil {
-			fmt.Printf("Failed to send SMS to %s (%s): %v\n", student.StudentName, student.PhoneNumber, err)
-			failCount++
-		} else {
-			successCount++
+		msgResult := MessageResult{
+			StudentID:   student.StudentID,
+			StudentName: student.StudentName,
+			PhoneNumber: student.PhoneNumber,
+			CourseName:  student.CourseName,
+			Percentage:  student.Percentage,
+			Message:     message,
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		if dryRun {
+			msgResult.Success = true
+			result.MessagesPlanned = append(result.MessagesPlanned, msgResult)
+		} else {
+			err := client.SendSMS(student.PhoneNumber, message)
+			if err != nil {
+				msgResult.Success = false
+				msgResult.ErrorMessage = err.Error()
+				result.MessagesFailed = append(result.MessagesFailed, msgResult)
+				result.FailureCount++
+				fmt.Printf("Failed to send SMS to %s (%s): %v\n", student.StudentName, student.PhoneNumber, err)
+			} else {
+				msgResult.Success = true
+				result.MessagesSent = append(result.MessagesSent, msgResult)
+				result.SuccessCount++
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
-	fmt.Printf("\nAttendance reports sent: %d successful, %d failed\n", successCount, failCount)
-	return nil
+	if dryRun {
+		fmt.Printf("\nDry run: %d messages would be sent\n", len(result.MessagesPlanned))
+	} else {
+		fmt.Printf("\nAttendance reports sent: %d successful, %d failed\n", result.SuccessCount, result.FailureCount)
+	}
+
+	return result, nil
+}
+
+func SendAttendanceReports(students []StudentAttendanceInfo) error {
+	_, err := SendAttendanceReportsWithResult(students, false)
+	return err
 }
