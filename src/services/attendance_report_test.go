@@ -19,21 +19,6 @@ func TestGetMessageTemplate_Excellent_Portuguese(t *testing.T) {
 	}
 }
 
-func TestGetMessageTemplate_Excellent_English(t *testing.T) {
-	createTestTemplateFile(t)
-	defer removeTestTemplateFile()
-
-	template := GetMessageTemplate(100, "Essential English Course")
-
-	if template == "" {
-		t.Fatal("Expected non-empty template")
-	}
-
-	if template != "[Name]: 100% attendance in [Course]. Excellent!" {
-		t.Errorf("Unexpected template: %s", template)
-	}
-}
-
 func TestGetMessageTemplate_Good_Portuguese(t *testing.T) {
 	createTestTemplateFile(t)
 	defer removeTestTemplateFile()
@@ -48,25 +33,6 @@ func TestGetMessageTemplate_Good_Portuguese(t *testing.T) {
 		}
 
 		if template != "[Nome]: Assiduidade de [X]% em [Curso]. Bom trabalho!" {
-			t.Errorf("Unexpected template for %.0f%%: %s", percentage, template)
-		}
-	}
-}
-
-func TestGetMessageTemplate_Warning_English(t *testing.T) {
-	createTestTemplateFile(t)
-	defer removeTestTemplateFile()
-
-	testCases := []float64{50, 60, 70, 79}
-
-	for _, percentage := range testCases {
-		template := GetMessageTemplate(percentage, "Advanced English")
-
-		if template == "" {
-			t.Fatalf("Expected non-empty template for %.0f%%", percentage)
-		}
-
-		if template != "[Name]: [X]% attendance in [Course]. Warning!" {
 			t.Errorf("Unexpected template for %.0f%%: %s", percentage, template)
 		}
 	}
@@ -87,26 +53,6 @@ func TestGetMessageTemplate_Critical_Portuguese(t *testing.T) {
 
 		if template != "[Nome]: ALERTA! Assiduidade crítica de [X]% em [Curso]." {
 			t.Errorf("Unexpected template for %.0f%%: %s", percentage, template)
-		}
-	}
-}
-
-func TestGetMessageTemplate_EnglishDetection(t *testing.T) {
-	createTestTemplateFile(t)
-	defer removeTestTemplateFile()
-
-	englishCourses := []string{
-		"English Course",
-		"essential english",
-		"ADVANCED ENGLISH",
-		"Business English",
-	}
-
-	for _, course := range englishCourses {
-		template := GetMessageTemplate(100, course)
-
-		if template != "[Name]: 100% attendance in [Course]. Excellent!" {
-			t.Errorf("Expected English template for course '%s', got: %s", course, template)
 		}
 	}
 }

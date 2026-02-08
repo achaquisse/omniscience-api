@@ -100,43 +100,23 @@ func GetMessageTemplate(percentage float64, courseName string) string {
 		return ""
 	}
 
-	isEnglish := strings.Contains(strings.ToLower(courseName), "english")
 	lang := "pt"
-	if isEnglish {
-		lang = "en"
-	}
 
 	var template string
 	var category string
 
 	if percentage == 100 {
 		category = "excellent"
-		if lang == "pt" {
-			template = templates.Excellent.PT
-		} else {
-			template = templates.Excellent.EN
-		}
+		template = templates.Excellent.PT
 	} else if percentage >= 80 {
 		category = "good"
-		if lang == "pt" {
-			template = templates.Good.PT
-		} else {
-			template = templates.Good.EN
-		}
+		template = templates.Good.PT
 	} else if percentage >= 50 {
 		category = "warning"
-		if lang == "pt" {
-			template = templates.Warning.PT
-		} else {
-			template = templates.Warning.EN
-		}
+		template = templates.Warning.PT
 	} else {
 		category = "critical"
-		if lang == "pt" {
-			template = templates.Critical.PT
-		} else {
-			template = templates.Critical.EN
-		}
+		template = templates.Critical.PT
 	}
 
 	fmt.Printf("Selected template category: %s, language: %s for percentage: %.0f%%, course: %s\n",
