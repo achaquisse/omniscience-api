@@ -82,7 +82,7 @@ func GetActiveRegistrationsWithAttendance(startDate, endDate time.Time) ([]Stude
 		results = append(results, StudentAttendanceInfo{
 			RegistrationID: reg.ID,
 			StudentID:      reg.StudentID,
-			StudentName:    reg.Student.FirstName,
+			StudentName:    strings.TrimSpace(reg.Student.FirstName),
 			PhoneNumber:    reg.Student.Phone,
 			CourseName:     studentClass.Course.Name,
 			Percentage:     percentage,
