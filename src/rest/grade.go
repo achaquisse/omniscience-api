@@ -1,101 +1,161 @@
 package rest
 
 import (
+	"fmt"
 	"skulla-api/db"
 	"skulla-api/services"
-	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 )
 
+type GradeWithFinal struct {
+	db.Grade
+	FinalGrade *db.FinalGrade `json:"final_grade,omitempty"`
+}
+
+func attachFinalGrade(grade *db.Grade) *db.FinalGrade {
+	var finalGrade db.FinalGrade
+	var registration db.Registration
+
+	if err := db.DB().First(&registration, grade.RegistrationID).Error; err != nil {
+		return nil
+	}
+
+	if err := db.DB().Where("registration_id = ? AND student_class_id = ?", grade.RegistrationID, registration.StudentClassID).
+		First(&finalGrade).Error; err != nil {
+		return nil
+	}
+
+	return &finalGrade
+}
+
 func ListGrades(c *fiber.Ctx) error {
-	evaluationItemIDStr := c.Query("evaluation_item_id")
-	registrationIDStr := c.Query("registration_id")
-	studentClassIDStr := c.Query("student_class_id")
+	query := db.DB().Preload("Category").Preload("StudentClass")
 
-	query := db.DB().Preload("EvaluationItem").Preload("EvaluationItem.Category")
-
-	if evaluationItemIDStr != "" {
-		evaluationItemID, err := strconv.ParseUint(evaluationItemIDStr, 10, 64)
-		if err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid evaluation_item_id"})
-		}
-		query = query.Where("evaluation_item_id = ?", evaluationItemID)
+	if categoryID, err := ParseOptionalUintQueryParam(c, "category_id"); err != nil {
+		return ReturnBadRequest(c, err.Error())
+	} else if categoryID != nil {
+		query = query.Where("category_id = ?", *categoryID)
 	}
 
-	if registrationIDStr != "" {
-		registrationID, err := strconv.ParseUint(registrationIDStr, 10, 64)
-		if err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid registration_id"})
-		}
-		query = query.Where("registration_id = ?", registrationID)
+	if registrationID, err := ParseOptionalUintQueryParam(c, "registration_id"); err != nil {
+		return ReturnBadRequest(c, err.Error())
+	} else if registrationID != nil {
+		query = query.Where("registration_id = ?", *registrationID)
 	}
 
-	if studentClassIDStr != "" {
-		studentClassID, err := strconv.ParseUint(studentClassIDStr, 10, 64)
-		if err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid student_class_id"})
-		}
-		query = query.Joins("JOIN EvaluationItem ON EvaluationItem.id = Grade.evaluation_item_id").
-			Where("EvaluationItem.student_class_id = ?", studentClassID)
+	if studentClassID, err := ParseOptionalUintQueryParam(c, "student_class_id"); err != nil {
+		return ReturnBadRequest(c, err.Error())
+	} else if studentClassID != nil {
+		query = query.Where("student_class_id = ?", *studentClassID)
 	}
 
 	var grades []db.Grade
-	err := query.Find(&grades).Error
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to fetch grades"})
+	if err := query.Find(&grades).Error; err != nil {
+		return ReturnInternalError(c, "failed to fetch grades")
 	}
 
-	return c.JSON(grades)
+	gradesWithFinal := make([]GradeWithFinal, 0, len(grades))
+	for _, grade := range grades {
+		gradeWithFinal := GradeWithFinal{
+			Grade:      grade,
+			FinalGrade: attachFinalGrade(&grade),
+		}
+		gradesWithFinal = append(gradesWithFinal, gradeWithFinal)
+	}
+
+	return c.JSON(gradesWithFinal)
 }
 
 func GetGrade(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var grade db.Grade
 
-	err := db.DB().Preload("EvaluationItem").Preload("EvaluationItem.Category").
-		First(&grade, id).Error
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "grade not found"})
+	if err := db.DB().Preload("Category").Preload("StudentClass").First(&grade, id).Error; err != nil {
+		return ReturnNotFound(c, "grade not found")
 	}
 
-	return c.JSON(grade)
+	gradeWithFinal := GradeWithFinal{
+		Grade:      grade,
+		FinalGrade: attachFinalGrade(&grade),
+	}
+
+	return c.JSON(gradeWithFinal)
 }
 
 func CreateGrade(c *fiber.Ctx) error {
 	var grade db.Grade
 
 	if err := c.BodyParser(&grade); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+		return ReturnBadRequest(c, "invalid request body")
 	}
 
-	if grade.EvaluationItemID == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "evaluation_item_id is required"})
+	if grade.CategoryID == 0 {
+		return ReturnBadRequest(c, "category_id is required")
 	}
 
 	if grade.RegistrationID == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "registration_id is required"})
+		return ReturnBadRequest(c, "registration_id is required")
 	}
 
-	var evaluationItem db.EvaluationItem
-	err := db.DB().First(&evaluationItem, grade.EvaluationItemID).Error
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "evaluation item not found"})
+	var registration db.Registration
+	if err := db.DB().Preload("StudentClass").First(&registration, grade.RegistrationID).Error; err != nil {
+		return ReturnNotFound(c, "registration not found")
 	}
 
+	var category db.EvaluationCategory
+	if err := db.DB().First(&category, grade.CategoryID).Error; err != nil {
+		return ReturnNotFound(c, "evaluation category not found")
+	}
+
+	if category.CourseID != registration.StudentClass.CourseID {
+		return ReturnBadRequest(c, "evaluation category course does not match student class course")
+	}
+
+	var existingGradesCount int64
+	db.DB().Model(&db.Grade{}).Where("category_id = ? AND student_class_id = ? AND registration_id = ?",
+		grade.CategoryID, registration.StudentClassID, grade.RegistrationID).Count(&existingGradesCount)
+
+	if int(existingGradesCount) >= category.Cardinality {
+		return ReturnBadRequest(c, fmt.Sprintf("cannot create more grades: category cardinality limit (%d) reached", category.Cardinality))
+	}
+
+	if grade.Score != nil {
+		if *grade.Score < 0 {
+			return ReturnBadRequest(c, "score cannot be negative")
+		}
+		if *grade.Score > category.MaxScore {
+			return ReturnBadRequest(c, fmt.Sprintf("score cannot exceed max_score: %g", category.MaxScore))
+		}
+	}
+
+	grade.StudentClassID = registration.StudentClassID
+	grade.Name = category.Name
+	grade.MaxScore = category.MaxScore
+
+	calculator := services.NewGradingCalculator()
 	if grade.Score != nil && !grade.IsExcused {
-		calculator := services.NewGradingCalculator()
-		percentage := calculator.CalculatePercentage(*grade.Score, evaluationItem.MaxScore)
+		percentage := calculator.CalculatePercentage(*grade.Score, grade.MaxScore)
 		grade.Percentage = &percentage
 	}
 
-	err = db.DB().Create(&grade).Error
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to create grade"})
+	if err := db.DB().Create(&grade).Error; err != nil {
+		return ReturnInternalError(c, "failed to create grade")
 	}
 
-	db.DB().Preload("EvaluationItem").Preload("EvaluationItem.Category").First(&grade, grade.ID)
+	if courseID, err := db.GetStudentClassCourseID(grade.StudentClassID); err == nil {
+		if finalGrade, err := calculator.CalculateFinalGrade(grade.RegistrationID, grade.StudentClassID, courseID); err == nil {
+			err := calculator.SaveOrUpdateFinalGrade(finalGrade)
+			if err != nil {
+				log.Error(err)
+				return ReturnInternalError(c, "failed to update final grade")
+			}
+		}
+	}
+
+	db.DB().Preload("Category").Preload("StudentClass").First(&grade, grade.ID)
 
 	return c.Status(201).JSON(grade)
 }
@@ -104,105 +164,167 @@ func UpdateGrade(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var grade db.Grade
 
-	err := db.DB().Preload("EvaluationItem").First(&grade, id).Error
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "grade not found"})
+	if err := db.DB().Preload("Category").First(&grade, id).Error; err != nil {
+		return ReturnNotFound(c, "grade not found")
 	}
 
 	oldScore := grade.Score
-	oldStatus := grade.Status
 
-	var updates db.Grade
+	var updates struct {
+		Score     *float64 `json:"score"`
+		UpdatedBy *string  `json:"updated_by,omitempty"`
+	}
+
 	if err := c.BodyParser(&updates); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+		return ReturnBadRequest(c, "invalid request body")
 	}
 
-	if updates.Score != nil {
-		grade.Score = updates.Score
-		if !grade.IsExcused {
-			calculator := services.NewGradingCalculator()
-			percentage := calculator.CalculatePercentage(*updates.Score, grade.EvaluationItem.MaxScore)
-			grade.Percentage = &percentage
-		}
+	if updates.Score == nil {
+		return ReturnBadRequest(c, "score is required")
 	}
 
-	grade.IsExcused = updates.IsExcused
-	grade.IsLate = updates.IsLate
-	grade.LatePenalty = updates.LatePenalty
-	if updates.Comments != nil {
-		grade.Comments = updates.Comments
+	if *updates.Score < 0 {
+		return ReturnBadRequest(c, "score cannot be negative")
 	}
-	if updates.GradedBy != nil {
-		grade.GradedBy = updates.GradedBy
+
+	if *updates.Score > grade.Category.MaxScore {
+		return ReturnBadRequest(c, fmt.Sprintf("score cannot exceed max_score: %g", grade.Category.MaxScore))
 	}
-	if updates.Status != "" {
-		grade.Status = updates.Status
-		if updates.Status == "PUBLISHED" && grade.GradedAt == nil {
-			now := time.Now()
-			grade.GradedAt = &now
-		}
+
+	calculator := services.NewGradingCalculator()
+	grade.Score = updates.Score
+
+	if !grade.IsExcused {
+		percentage := calculator.CalculatePercentage(*updates.Score, grade.MaxScore)
+		grade.Percentage = &percentage
 	}
+
+	if grade.GradedAt == nil {
+		now := time.Now()
+		grade.GradedAt = &now
+	}
+
 	if updates.UpdatedBy != nil {
 		grade.UpdatedBy = updates.UpdatedBy
 	}
 
-	err = db.DB().Save(&grade).Error
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to update grade"})
+	if err := db.DB().Save(&grade).Error; err != nil {
+		return ReturnInternalError(c, "failed to update grade")
 	}
 
-	if oldScore != updates.Score || oldStatus != updates.Status {
+	if oldScore != updates.Score {
+		changedBy := "system"
+		if updates.UpdatedBy != nil {
+			changedBy = *updates.UpdatedBy
+		}
 		history := db.GradeHistory{
-			GradeID:   grade.ID,
-			OldScore:  oldScore,
-			NewScore:  updates.Score,
-			OldStatus: &oldStatus,
-			NewStatus: &updates.Status,
-			ChangedBy: *updates.UpdatedBy,
+			GradeID:      grade.ID,
+			OldScore:     oldScore,
+			NewScore:     updates.Score,
+			ChangedBy:    changedBy,
+			ChangeReason: nil,
 		}
 		db.DB().Create(&history)
 	}
 
-	db.DB().Preload("EvaluationItem").Preload("EvaluationItem.Category").First(&grade, grade.ID)
+	if courseID, err := db.GetStudentClassCourseID(grade.StudentClassID); err == nil {
+		if finalGrade, err := calculator.CalculateFinalGrade(grade.RegistrationID, grade.StudentClassID, courseID); err == nil {
+			err := calculator.SaveOrUpdateFinalGrade(finalGrade)
+			if err != nil {
+				log.Error(err)
+				return ReturnInternalError(c, "failed save updated grade")
+			}
+		}
+	}
+
+	db.DB().Preload("Category").Preload("StudentClass").First(&grade, grade.ID)
 
 	return c.JSON(grade)
 }
 
 func BatchCreateGrades(c *fiber.Ctx) error {
 	var request struct {
-		EvaluationItemID uint                     `json:"evaluation_item_id"`
-		Grades           []map[string]interface{} `json:"grades"`
+		CategoryID     uint                     `json:"category_id"`
+		StudentClassID uint                     `json:"student_class_id"`
+		Name           string                   `json:"name"`
+		Description    *string                  `json:"description"`
+		Date           *time.Time               `json:"date"`
+		DueDate        *time.Time               `json:"due_date"`
+		MaxScore       float64                  `json:"max_score"`
+		Grades         []map[string]interface{} `json:"grades"`
 	}
 
 	if err := c.BodyParser(&request); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+		return ReturnBadRequest(c, "invalid request body")
 	}
 
-	if request.EvaluationItemID == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "evaluation_item_id is required"})
+	if request.CategoryID == 0 {
+		return ReturnBadRequest(c, "category_id is required")
 	}
 
-	var evaluationItem db.EvaluationItem
-	err := db.DB().First(&evaluationItem, request.EvaluationItemID).Error
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "evaluation item not found"})
+	if request.StudentClassID == 0 {
+		return ReturnBadRequest(c, "student_class_id is required")
+	}
+
+	if request.Name == "" {
+		return ReturnBadRequest(c, "name is required")
+	}
+
+	if request.MaxScore <= 0 {
+		return ReturnBadRequest(c, "max_score must be greater than 0")
+	}
+
+	var studentClass db.StudentClass
+	if err := db.DB().First(&studentClass, request.StudentClassID).Error; err != nil {
+		return ReturnNotFound(c, "student class not found")
+	}
+
+	var category db.EvaluationCategory
+	if err := db.DB().First(&category, request.CategoryID).Error; err != nil {
+		return ReturnNotFound(c, "evaluation category not found")
+	}
+
+	if category.CourseID != studentClass.CourseID {
+		return ReturnBadRequest(c, "evaluation category course does not match student class course")
+	}
+
+	registrationGradeCounts := make(map[uint]int)
+	for _, gradeData := range request.Grades {
+		registrationID := uint(gradeData["registration_id"].(float64))
+		registrationGradeCounts[registrationID]++
+	}
+
+	for regID, newCount := range registrationGradeCounts {
+		var existingCount int64
+		db.DB().Model(&db.Grade{}).Where("category_id = ? AND student_class_id = ? AND registration_id = ?",
+			request.CategoryID, request.StudentClassID, regID).Count(&existingCount)
+
+		if int(existingCount)+newCount > category.Cardinality {
+			return ReturnBadRequest(c, fmt.Sprintf("cannot create grades: would exceed cardinality limit (%d) for registration %d", category.Cardinality, regID))
+		}
 	}
 
 	calculator := services.NewGradingCalculator()
 	var createdGrades []db.Grade
+	registrationIDsToUpdate := make(map[uint]bool)
 
 	for _, gradeData := range request.Grades {
 		registrationID := uint(gradeData["registration_id"].(float64))
 		score := gradeData["score"].(float64)
 
-		percentage := calculator.CalculatePercentage(score, evaluationItem.MaxScore)
+		percentage := calculator.CalculatePercentage(score, request.MaxScore)
 
 		grade := db.Grade{
-			EvaluationItemID: request.EvaluationItemID,
-			RegistrationID:   registrationID,
-			Score:            &score,
-			Percentage:       &percentage,
-			Status:           "DRAFT",
+			CategoryID:     request.CategoryID,
+			StudentClassID: request.StudentClassID,
+			RegistrationID: registrationID,
+			Name:           request.Name,
+			Description:    request.Description,
+			Date:           request.Date,
+			DueDate:        request.DueDate,
+			MaxScore:       request.MaxScore,
+			Score:          &score,
+			Percentage:     &percentage,
 		}
 
 		if comments, ok := gradeData["comments"].(string); ok {
@@ -212,9 +334,17 @@ func BatchCreateGrades(c *fiber.Ctx) error {
 			grade.GradedBy = &gradedBy
 		}
 
-		err = db.DB().Create(&grade).Error
-		if err == nil {
+		if err := db.DB().Create(&grade).Error; err == nil {
 			createdGrades = append(createdGrades, grade)
+			registrationIDsToUpdate[registrationID] = true
+		}
+	}
+
+	if courseID, err := db.GetStudentClassCourseID(request.StudentClassID); err == nil {
+		for regID := range registrationIDsToUpdate {
+			if finalGrade, err := calculator.CalculateFinalGrade(regID, request.StudentClassID, courseID); err == nil {
+				calculator.SaveOrUpdateFinalGrade(finalGrade)
+			}
 		}
 	}
 
@@ -224,27 +354,49 @@ func BatchCreateGrades(c *fiber.Ctx) error {
 	})
 }
 
-func PublishGrades(c *fiber.Ctx) error {
-	evaluationItemIDStr := c.Params("evaluation_item_id")
-	evaluationItemID, err := strconv.ParseUint(evaluationItemIDStr, 10, 64)
+func GetGradeStatistics(c *fiber.Ctx) error {
+	categoryID, err := ParseOptionalUintQueryParam(c, "category_id")
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid evaluation_item_id"})
+		return ReturnBadRequest(c, err.Error())
 	}
 
-	now := time.Now()
-	result := db.DB().Model(&db.Grade{}).
-		Where("evaluation_item_id = ? AND status = ?", evaluationItemID, "DRAFT").
-		Updates(map[string]interface{}{
-			"status":    "PUBLISHED",
-			"graded_at": now,
-		})
-
-	if result.Error != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to publish grades"})
+	studentClassID, err := ParseOptionalUintQueryParam(c, "student_class_id")
+	if err != nil {
+		return ReturnBadRequest(c, err.Error())
 	}
 
-	return c.JSON(fiber.Map{
-		"message":   "grades published successfully",
-		"published": result.RowsAffected,
-	})
+	registrationID, err := ParseOptionalUintQueryParam(c, "registration_id")
+	if err != nil {
+		return ReturnBadRequest(c, err.Error())
+	}
+
+	if studentClassID == nil {
+		return ReturnBadRequest(c, "student_class_id is required")
+	}
+
+	if registrationID == nil {
+		return ReturnBadRequest(c, "registration_id is required")
+	}
+
+	calculator := services.NewGradingCalculator()
+
+	if categoryID != nil {
+		stats, err := calculator.GetCategoryStatistics(*categoryID, *studentClassID, *registrationID)
+		if err != nil {
+			return ReturnInternalError(c, "failed to fetch statistics")
+		}
+		return c.JSON(stats)
+	}
+
+	courseID, err := db.GetStudentClassCourseID(*studentClassID)
+	if err != nil {
+		return ReturnInternalError(c, "failed to get course ID")
+	}
+
+	allStats, err := calculator.GetAllCategoryStatistics(*studentClassID, *registrationID, courseID)
+	if err != nil {
+		return ReturnInternalError(c, "failed to fetch all statistics")
+	}
+
+	return c.JSON(allStats)
 }

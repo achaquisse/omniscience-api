@@ -2,6 +2,7 @@ package rest
 
 import (
 	"skulla-api/db"
+	"skulla-api/services"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -18,9 +19,22 @@ func GetGradingFormula(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid course_id"})
 	}
 
+	levelIDStr := c.Query("level_id")
+
+	query := db.DB().Where("course_id = ? AND is_active = ?", courseID, true)
+
+	if levelIDStr != "" {
+		levelID, err := strconv.ParseUint(levelIDStr, 10, 64)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid level_id"})
+		}
+		query = query.Where("level_id = ?", levelID)
+	} else {
+		query = query.Where("level_id IS NULL")
+	}
+
 	var formula db.GradingFormula
-	err = db.DB().Where("course_id = ? AND is_active = ?", courseID, true).
-		Preload("Course").First(&formula).Error
+	err = query.Preload("Course").First(&formula).Error
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "grading formula not found"})
 	}
@@ -28,68 +42,33 @@ func GetGradingFormula(c *fiber.Ctx) error {
 	return c.JSON(formula)
 }
 
-func CreateGradingFormula(c *fiber.Ctx) error {
-	var formula db.GradingFormula
-
-	if err := c.BodyParser(&formula); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
-	}
-
-	if formula.CourseID == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "course_id is required"})
-	}
-
-	if formula.FormulaType == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "formula_type is required"})
-	}
-
-	err := db.DB().Create(&formula).Error
+func GetFormulaResults(c *fiber.Ctx) error {
+	registrationID, err := ParseOptionalUintQueryParam(c, "registration_id")
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to create formula"})
+		return ReturnBadRequest(c, err.Error())
+	}
+	if registrationID == nil {
+		return ReturnBadRequest(c, "registration_id is required")
 	}
 
-	db.DB().Preload("Course").First(&formula, formula.ID)
-
-	return c.Status(201).JSON(formula)
-}
-
-func UpdateGradingFormula(c *fiber.Ctx) error {
-	id := c.Params("id")
-	var formula db.GradingFormula
-
-	err := db.DB().First(&formula, id).Error
+	var registration db.Registration
+	err = db.DB().First(&registration, *registrationID).Error
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "formula not found"})
+		return ReturnInternalError(c, "registration not found")
 	}
 
-	var updates db.GradingFormula
-	if err := c.BodyParser(&updates); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
-	}
+	studentClassID := registration.StudentClassID
 
-	if updates.FormulaType != "" {
-		formula.FormulaType = updates.FormulaType
-	}
-	if updates.FormulaConfig != nil {
-		formula.FormulaConfig = updates.FormulaConfig
-	}
-	if updates.PassingPercentage != nil {
-		formula.PassingPercentage = updates.PassingPercentage
-	}
-	if updates.GradingScale != nil {
-		formula.GradingScale = updates.GradingScale
-	}
-	formula.IsActive = updates.IsActive
-	if updates.UpdatedBy != nil {
-		formula.UpdatedBy = updates.UpdatedBy
-	}
-
-	err = db.DB().Save(&formula).Error
+	courseID, err := db.GetStudentClassCourseID(studentClassID)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to update formula"})
+		return ReturnInternalError(c, "failed to get course ID")
 	}
 
-	db.DB().Preload("Course").First(&formula, formula.ID)
+	calculator := services.NewGradingCalculator()
+	result, err := calculator.CalculateFormulaDetailed(*registrationID, studentClassID, courseID)
+	if err != nil {
+		return ReturnInternalError(c, err.Error())
+	}
 
-	return c.JSON(formula)
+	return c.JSON(result)
 }

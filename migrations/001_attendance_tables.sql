@@ -20,3 +20,8 @@ CREATE TABLE `Attendance` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE StudentClass MODIFY COLUMN disabled TINYINT(1) NOT NULL DEFAULT 0;"
+
+
+-- Add created_by and updated_by columns to Attendance table
+ALTER TABLE `Attendance` ADD COLUMN `created_by` VARCHAR(500) DEFAULT NULL;
+ALTER TABLE `Attendance` ADD COLUMN `updated_by` VARCHAR(500) DEFAULT NULL;
