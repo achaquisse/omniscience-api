@@ -7,29 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/log"
 )
-
-type GradeWithFinal struct {
-	db.Grade
-	FinalGrade *db.FinalGrade `json:"final_grade,omitempty"`
-}
-
-func attachFinalGrade(grade *db.Grade) *db.FinalGrade {
-	var finalGrade db.FinalGrade
-	var registration db.Registration
-
-	if err := db.DB().First(&registration, grade.RegistrationID).Error; err != nil {
-		return nil
-	}
-
-	if err := db.DB().Where("registration_id = ? AND student_class_id = ?", grade.RegistrationID, registration.StudentClassID).
-		First(&finalGrade).Error; err != nil {
-		return nil
-	}
-
-	return &finalGrade
-}
 
 func ListGrades(c *fiber.Ctx) error {
 	query := db.DB().Preload("Category").Preload("StudentClass")
@@ -57,16 +35,7 @@ func ListGrades(c *fiber.Ctx) error {
 		return ReturnInternalError(c, "failed to fetch grades")
 	}
 
-	gradesWithFinal := make([]GradeWithFinal, 0, len(grades))
-	for _, grade := range grades {
-		gradeWithFinal := GradeWithFinal{
-			Grade:      grade,
-			FinalGrade: attachFinalGrade(&grade),
-		}
-		gradesWithFinal = append(gradesWithFinal, gradeWithFinal)
-	}
-
-	return c.JSON(gradesWithFinal)
+	return c.JSON(grades)
 }
 
 func GetGrade(c *fiber.Ctx) error {
@@ -77,12 +46,7 @@ func GetGrade(c *fiber.Ctx) error {
 		return ReturnNotFound(c, "grade not found")
 	}
 
-	gradeWithFinal := GradeWithFinal{
-		Grade:      grade,
-		FinalGrade: attachFinalGrade(&grade),
-	}
-
-	return c.JSON(gradeWithFinal)
+	return c.JSON(grade)
 }
 
 func CreateGrade(c *fiber.Ctx) error {
@@ -145,16 +109,6 @@ func CreateGrade(c *fiber.Ctx) error {
 		return ReturnInternalError(c, "failed to create grade")
 	}
 
-	if courseID, err := db.GetStudentClassCourseID(grade.StudentClassID); err == nil {
-		if finalGrade, err := calculator.CalculateFinalGrade(grade.RegistrationID, grade.StudentClassID, courseID); err == nil {
-			err := calculator.SaveOrUpdateFinalGrade(finalGrade)
-			if err != nil {
-				log.Error(err)
-				return ReturnInternalError(c, "failed to update final grade")
-			}
-		}
-	}
-
 	db.DB().Preload("Category").Preload("StudentClass").First(&grade, grade.ID)
 
 	return c.Status(201).JSON(grade)
@@ -213,28 +167,6 @@ func UpdateGrade(c *fiber.Ctx) error {
 	}
 
 	if oldScore != updates.Score {
-		changedBy := "system"
-		if updates.UpdatedBy != nil {
-			changedBy = *updates.UpdatedBy
-		}
-		history := db.GradeHistory{
-			GradeID:      grade.ID,
-			OldScore:     oldScore,
-			NewScore:     updates.Score,
-			ChangedBy:    changedBy,
-			ChangeReason: nil,
-		}
-		db.DB().Create(&history)
-	}
-
-	if courseID, err := db.GetStudentClassCourseID(grade.StudentClassID); err == nil {
-		if finalGrade, err := calculator.CalculateFinalGrade(grade.RegistrationID, grade.StudentClassID, courseID); err == nil {
-			err := calculator.SaveOrUpdateFinalGrade(finalGrade)
-			if err != nil {
-				log.Error(err)
-				return ReturnInternalError(c, "failed save updated grade")
-			}
-		}
 	}
 
 	db.DB().Preload("Category").Preload("StudentClass").First(&grade, grade.ID)
@@ -337,14 +269,6 @@ func BatchCreateGrades(c *fiber.Ctx) error {
 		if err := db.DB().Create(&grade).Error; err == nil {
 			createdGrades = append(createdGrades, grade)
 			registrationIDsToUpdate[registrationID] = true
-		}
-	}
-
-	if courseID, err := db.GetStudentClassCourseID(request.StudentClassID); err == nil {
-		for regID := range registrationIDsToUpdate {
-			if finalGrade, err := calculator.CalculateFinalGrade(regID, request.StudentClassID, courseID); err == nil {
-				calculator.SaveOrUpdateFinalGrade(finalGrade)
-			}
 		}
 	}
 

@@ -265,12 +265,12 @@ func TestCalculateInglesLevel3Formula(t *testing.T) {
 	}
 
 	categoryScores := db.CategoryScores{
-		"Avaliação escrita": db.CategoryScore{Score: 85.0},
-		"Ditados":           db.CategoryScore{Score: 90.0},
-		"Composições":       db.CategoryScore{Score: 75.0},
-		"Speeches":          db.CategoryScore{Score: 78.0},
-		"Listening":         db.CategoryScore{Score: 82.0},
-		"Exame":             db.CategoryScore{Score: 88.0},
+		"Avaliação escrita": db.CategoryScore{Score: 85.0, Percentage: 85.0},
+		"Ditados":           db.CategoryScore{Score: 90.0, Percentage: 90.0},
+		"Composições":       db.CategoryScore{Score: 75.0, Percentage: 75.0},
+		"Speeches":          db.CategoryScore{Score: 78.0, Percentage: 78.0},
+		"Listening":         db.CategoryScore{Score: 82.0, Percentage: 82.0},
+		"Exame":             db.CategoryScore{Score: 88.0, Percentage: 88.0},
 	}
 
 	result, err := gc.calculateMultiStageLevelBased(inglesFormula, categoryScores, 3)
@@ -316,12 +316,12 @@ func TestCalculateInglesLevel4Formula(t *testing.T) {
 	}
 
 	categoryScores := db.CategoryScores{
-		"Avaliação escrita": db.CategoryScore{Score: 85.0},
-		"Ditados":           db.CategoryScore{Score: 90.0},
-		"Composições":       db.CategoryScore{Score: 75.0},
-		"Speeches":          db.CategoryScore{Score: 78.0},
-		"Listening":         db.CategoryScore{Score: 82.0},
-		"Exame":             db.CategoryScore{Score: 88.0},
+		"Avaliação escrita": db.CategoryScore{Score: 85.0, Percentage: 85.0},
+		"Ditados":           db.CategoryScore{Score: 90.0, Percentage: 90.0},
+		"Composições":       db.CategoryScore{Score: 75.0, Percentage: 75.0},
+		"Speeches":          db.CategoryScore{Score: 78.0, Percentage: 78.0},
+		"Listening":         db.CategoryScore{Score: 82.0, Percentage: 82.0},
+		"Exame":             db.CategoryScore{Score: 88.0, Percentage: 88.0},
 	}
 
 	result, err := gc.calculateMultiStageLevelBased(inglesFormula, categoryScores, 4)
@@ -352,9 +352,9 @@ func TestWeightedAverageFormula(t *testing.T) {
 	}
 
 	categoryScores := db.CategoryScores{
-		"Assignments": db.CategoryScore{Score: 85.0},
-		"Midterm":     db.CategoryScore{Score: 78.0},
-		"Final":       db.CategoryScore{Score: 92.0},
+		"Assignments": db.CategoryScore{Score: 85.0, Percentage: 85.0},
+		"Midterm":     db.CategoryScore{Score: 78.0, Percentage: 78.0},
+		"Final":       db.CategoryScore{Score: 92.0, Percentage: 92.0},
 	}
 
 	result, err := gc.calculateCustomFormula(formula, categoryScores, 1)

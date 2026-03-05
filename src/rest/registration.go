@@ -1,9 +1,8 @@
 package rest
 
 import (
-	"skulla-api/db"
-
 	"github.com/gofiber/fiber/v2"
+	"skulla-api/db"
 )
 
 func ListRegistrations(c *fiber.Ctx) error {

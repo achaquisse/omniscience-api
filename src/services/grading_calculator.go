@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"skulla-api/db"
-	"time"
 )
 
 type GradingCalculator struct{}
@@ -34,101 +33,6 @@ type StageConfig struct {
 
 type LevelConfig struct {
 	Stages map[string]StageConfig `json:"stages"`
-}
-
-func (gc *GradingCalculator) CalculateFinalGrade(
-	registrationID uint,
-	studentClassID uint,
-	courseID uint,
-) (*db.FinalGrade, error) {
-	var studentClass db.StudentClass
-	err := db.DB().First(&studentClass, studentClassID).Error
-	if err != nil {
-		return nil, errors.New("student class not found")
-	}
-
-	levelID := studentClass.LevelId
-
-	var formula db.GradingFormula
-	query := db.DB().Where("course_id = ? AND is_active = ?", courseID, true)
-	if levelID > 0 {
-		query = query.Where("level_id = ?", levelID)
-	} else {
-		query = query.Where("level_id IS NULL")
-	}
-	err = query.First(&formula).Error
-	if err != nil {
-		return nil, errors.New("grading formula not found for course and level")
-	}
-
-	var categories []db.EvaluationCategory
-	err = db.DB().Where("course_id = ? AND is_active = ?", courseID, true).
-		Order("display_order ASC").
-		Find(&categories).Error
-	if err != nil {
-		return nil, err
-	}
-
-	if len(categories) == 0 {
-		return nil, errors.New("no evaluation categories found for course")
-	}
-
-	categoryScores := make(db.CategoryScores)
-	for _, category := range categories {
-		var grades []db.Grade
-		err = db.DB().Where("category_id = ? AND student_class_id = ? AND registration_id = ?",
-			category.ID, studentClassID, registrationID).Find(&grades).Error
-		if err != nil {
-			continue
-		}
-
-		rawScore, percentage := gc.calculateCategoryScore(grades, category)
-		categoryScores[category.Name] = db.CategoryScore{
-			CategoryID:   category.ID,
-			CategoryName: category.Name,
-			Score:        rawScore,
-			Percentage:   percentage,
-		}
-	}
-
-	var finalPercentage float64
-
-	if formula.FormulaType == "CUSTOM" && formula.FormulaConfig != nil {
-		finalPercentage, err = gc.calculateCustomFormula(formula.FormulaConfig, categoryScores, registrationID)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		var totalScore float64
-		var categoriesWithGrades int
-		for _, catScore := range categoryScores {
-			totalScore += catScore.Percentage
-			categoriesWithGrades++
-		}
-
-		if categoriesWithGrades > 0 {
-			finalPercentage = totalScore / float64(categoriesWithGrades)
-		}
-	}
-
-	finalPercentage = math.Round(finalPercentage*100) / 100
-
-	isPassing := false
-	if formula.PassingPercentage != nil {
-		isPassing = finalPercentage >= *formula.PassingPercentage
-	}
-
-	now := time.Now()
-	finalGrade := &db.FinalGrade{
-		RegistrationID:       registrationID,
-		StudentClassID:       studentClassID,
-		CalculatedPercentage: &finalPercentage,
-		IsPassing:            &isPassing,
-		CategoryScores:       categoryScores,
-		CalculationDate:      &now,
-	}
-
-	return finalGrade, nil
 }
 
 func (gc *GradingCalculator) calculateCustomFormula(
@@ -340,47 +244,6 @@ func (gc *GradingCalculator) calculateCategoryScore(grades []db.Grade, category 
 	}
 
 	return avgRawScore, percentage
-}
-
-func (gc *GradingCalculator) SaveOrUpdateFinalGrade(finalGrade *db.FinalGrade) error {
-	var existing db.FinalGrade
-	err := db.DB().Where("registration_id = ? AND student_class_id = ?",
-		finalGrade.RegistrationID, finalGrade.StudentClassID).First(&existing).Error
-
-	if err != nil {
-		return db.DB().Create(finalGrade).Error
-	}
-
-	finalGrade.ID = existing.ID
-	return db.DB().Save(finalGrade).Error
-}
-
-func (gc *GradingCalculator) RecalculateAllFinalGrades(studentClassID uint) error {
-	var registrations []db.Registration
-	err := db.DB().Where("student_class_id = ? AND status = ?", studentClassID, "ACTIVE").
-		Find(&registrations).Error
-	if err != nil {
-		return err
-	}
-
-	courseID, err := db.GetStudentClassCourseID(studentClassID)
-	if err != nil {
-		return err
-	}
-
-	for _, registration := range registrations {
-		finalGrade, err := gc.CalculateFinalGrade(registration.ID, studentClassID, courseID)
-		if err != nil {
-			continue
-		}
-
-		err = gc.SaveOrUpdateFinalGrade(finalGrade)
-		if err != nil {
-			continue
-		}
-	}
-
-	return nil
 }
 
 type StageComponentResult struct {

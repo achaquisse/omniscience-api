@@ -26,5 +26,7 @@ func Init(app *fiber.App) {
 	app.Patch("/grades/:id", AuthMiddleware, UpdateGrade)
 	app.Post("/grades/batch", AuthMiddleware, BatchCreateGrades)
 
+	app.Get("/certificates", AuthMiddleware, GenerateCertificate)
+
 	log.Info("REST API started")
 }

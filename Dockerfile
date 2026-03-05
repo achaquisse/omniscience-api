@@ -6,6 +6,7 @@ WORKDIR /app
 
 COPY bin/omniscience-api .
 COPY config config
+COPY src/services/assets assets
 
 ENV DB_HOST=localhost \
     DB_PORT=3306 \

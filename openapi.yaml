@@ -811,6 +811,49 @@ components:
           type: string
           format: date-time
 
+    StageComponentResult:
+      type: object
+      properties:
+        name:
+          type: string
+        score:
+          type: number
+          format: float
+        weight:
+          type: number
+          format: float
+
+    StageResult:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        score:
+          type: number
+          format: float
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageComponentResult'
+
+    FormulaDetailedResult:
+      type: object
+      properties:
+        final_score:
+          type: number
+          format: float
+        is_passing:
+          type: boolean
+        passing_percentage:
+          type: number
+          format: float
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageResult'
+
     CategoryGradeStatistics:
       type: object
       properties:
@@ -1158,7 +1201,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /evaluation-categories:
+  /grades/categories:
     get:
       summary: List evaluation categories
       description: Lists all evaluation categories for a course
@@ -1204,7 +1247,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /grading-formulas:
+  /grades/formulas:
     get:
       summary: Get grading formula
       description: Get the active grading formula for a course
@@ -1218,6 +1261,13 @@ paths:
           in: query
           description: ID of the course
           required: true
+          schema:
+            type: integer
+            format: uint
+        - name: level_id
+          in: query
+          description: Optional level ID. If provided, returns formula for that level. If omitted, returns formula where level_id is NULL.
+          required: false
           schema:
             type: integer
             format: uint
@@ -1242,6 +1292,49 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /grades/formulas/results:
+    get:
+      summary: Get formula calculation results
+      description: Calculate and return detailed formula results for a student registration
+      operationId: getFormulaResults
+      tags:
+        - Grade Management
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: registration_id
+          in: query
+          description: ID of the student registration
+          required: true
+          schema:
+            type: integer
+            format: uint
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaDetailedResult'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -1561,69 +1654,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /reports/student/{registration_id}:
+  /certificates:
     get:
-      summary: Get student report
-      description: Get detailed grade report for a student including all grades grouped by category
-      operationId: getStudentReport
+      summary: Generate certificate
+      description: Generate a PDF certificate for a student
+      operationId: generateCertificate
       tags:
-        - Reports
+        - Certificates
       security:
         - bearerAuth: []
       parameters:
-        - name: registration_id
-          in: path
-          description: Registration ID
+        - name: template
+          in: query
+          description: Certificate template language
           required: true
           schema:
-            type: integer
-            format: uint
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StudentReport'
-        '404':
-          description: Registration not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /reports/class/{student_class_id}:
-    get:
-      summary: Get class report
-      description: Get performance statistics and analytics for an entire class
-      operationId: getClassReport
-      tags:
-        - Reports
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: student_class_id
-          in: path
-          description: Student Class ID
+            type: string
+            enum: [portuguese, english]
+        - name: studentName
+          in: query
+          description: Name of the student (minimum 5 characters)
           required: true
           schema:
-            type: integer
-            format: uint
+            type: string
+            minLength: 5
+        - name: certDescription
+          in: query
+          description: Certificate description text (minimum 10 characters)
+          required: true
+          schema:
+            type: string
+            minLength: 10
       responses:
         '200':
-          description: Successful response
+          description: PDF certificate generated successfully
           content:
-            application/json:
+            application/pdf:
               schema:
-                $ref: '#/components/schemas/ClassReport'
-        '404':
-          description: Class not found
+                type: string
+                format: binary
+        '400': 
+          description: Invalid parameters
           content:
             application/json:
               schema:
@@ -1642,5 +1713,7 @@ tags:
     description: Operations related to student registrations
   - name: Attendance
     description: Operations related to attendance tracking and reporting
-  - name: Reports
-    description: Operations related to grade reports
+  - name: Grade Management
+    description: Operations related to grades, evaluation categories, and grading formulas
+  - name: Certificates
+    description: Operations related to certificate generation
