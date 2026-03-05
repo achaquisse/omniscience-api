@@ -11,6 +11,8 @@ type StudentClass struct {
 	Course   Course `gorm:"foreignKey:CourseID"`
 	PeriodId uint   `gorm:"foreignKey:PeriodID"`
 	Period   Period `gorm:"foreignKey:PeriodID"`
+	LevelId  int    `gorm:"foreignKey:LevelID"`
+	//Level    Level  `gorm:"foreignKey:LevelID"`
 }
 
 func (StudentClass) TableName() string {

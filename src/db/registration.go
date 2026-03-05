@@ -1,11 +1,12 @@
 package db
 
 type Registration struct {
-	ID             uint    `gorm:"primaryKey"`
-	Status         string  `gorm:"size:255;not null"`
-	StudentID      uint    `gorm:"foreignKey:StudentID"`
-	Student        Student `gorm:"foreignKey:StudentID"`
-	StudentClassID uint    `gorm:"column:student_class_id"`
+	ID             uint         `gorm:"primaryKey"`
+	Status         string       `gorm:"size:255;not null"`
+	StudentID      uint         `gorm:"foreignKey:StudentID"`
+	Student        Student      `gorm:"foreignKey:StudentID"`
+	StudentClassID uint         `gorm:"column:student_class_id"`
+	StudentClass   StudentClass `gorm:"foreignKey:StudentClassID"`
 }
 
 func (Registration) TableName() string {
