@@ -10,6 +10,7 @@ type EvaluationCategory struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	CourseID     uint      `gorm:"not null" json:"course_id"`
 	Course       Course    `gorm:"foreignKey:CourseID" json:"course,omitempty"`
+	LevelID      *uint     `gorm:"column:level_id" json:"level_id,omitempty"`
 	Name         string    `gorm:"size:100;not null" json:"name"`
 	Description  *string   `gorm:"type:text" json:"description,omitempty"`
 	MaxScore     float64   `gorm:"type:decimal(10,2);not null;default:20.00" json:"max_score"`
@@ -24,6 +25,18 @@ type EvaluationCategory struct {
 
 func (EvaluationCategory) TableName() string {
 	return "EvaluationCategory"
+}
+
+func FindActiveCategories(courseID uint, levelId int) []EvaluationCategory {
+	var categories []EvaluationCategory
+	query := db.Where("course_id = ? AND is_active = ?", courseID, true)
+	if levelId > 0 {
+		query = query.Where("level_id = ?", levelId)
+	} else {
+		query = query.Where("level_id IS NULL")
+	}
+	query.Order("display_order ASC").Find(&categories)
+	return categories
 }
 
 type FormulaConfig map[string]interface{}

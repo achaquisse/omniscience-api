@@ -21,6 +21,17 @@ func ListEvaluationCategories(c *fiber.Ctx) error {
 	var categories []db.EvaluationCategory
 	query := db.DB().Where("course_id = ?", courseID)
 
+	levelIDStr := c.Query("level_id")
+	if levelIDStr != "" {
+		levelID, err := strconv.ParseUint(levelIDStr, 10, 64)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid level_id"})
+		}
+		query = query.Where("level_id = ?", levelID)
+	} else {
+		query = query.Where("level_id IS NULL")
+	}
+
 	includeInactive := c.Query("include_inactive")
 	if includeInactive != "true" {
 		query = query.Where("is_active = ?", true)

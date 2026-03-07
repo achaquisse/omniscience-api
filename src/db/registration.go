@@ -1,8 +1,11 @@
 package db
 
+import "time"
+
 type Registration struct {
 	ID             uint         `gorm:"primaryKey"`
 	Status         string       `gorm:"size:255;not null"`
+	EnrolledAt     *time.Time   `gorm:"column:date"`
 	StudentID      uint         `gorm:"foreignKey:StudentID"`
 	Student        Student      `gorm:"foreignKey:StudentID"`
 	StudentClassID uint         `gorm:"column:student_class_id"`

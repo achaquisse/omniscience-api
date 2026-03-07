@@ -17,15 +17,10 @@ func Init(app *fiber.App) {
 	app.Get("/attendance/class-report", AuthMiddleware, GetClassAttendanceReport)
 	app.Post("/attendance/trigger-reports", AuthMiddleware, TriggerAttendanceReports)
 
-	app.Get("/grades/categories", AuthMiddleware, ListEvaluationCategories)
-	app.Get("/grades/formulas", AuthMiddleware, GetGradingFormula)
-	app.Get("/grades/formulas/results", AuthMiddleware, GetFormulaResults)
 	app.Get("/grades", AuthMiddleware, ListGrades)
-	app.Get("/grades/statistics", AuthMiddleware, GetGradeStatistics)
-	app.Get("/grades/:id", AuthMiddleware, GetGrade)
-	app.Post("/grades", AuthMiddleware, CreateGrade)
-	app.Patch("/grades/:id", AuthMiddleware, UpdateGrade)
-	app.Post("/grades/batch", AuthMiddleware, BatchCreateGrades)
+	app.Get("/grades/:registrationId", AuthMiddleware, GetGradesOfRegistration)
+	app.Post("/grades/:registrationId", AuthMiddleware, CreateGrade)
+	app.Patch("/grades/:registrationId/:gradeId", AuthMiddleware, UpdateGrade)
 
 	app.Get("/certificates", AuthMiddleware, GenerateCertificate)
 

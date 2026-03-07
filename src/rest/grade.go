@@ -2,107 +2,547 @@ package rest
 
 import (
 	"fmt"
+	"math"
 	"skulla-api/db"
 	"skulla-api/services"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
+type SubjectGrade struct {
+	Name             string  `json:"Name"`
+	Marks            float64 `json:"Marks"`
+	EvaluationsDone  int     `json:"EvaluationsDone"`
+	EvaluationsTotal int     `json:"EvaluationsTotal"`
+}
+
+type GradesSummary struct {
+	Subjects       []SubjectGrade `json:"Subjects"`
+	FrequencyGrade float64        `json:"FrequencyGrade"`
+	ExamGrade      float64        `json:"ExamGrade"`
+	FinalGrade     *float64       `json:"FinalGrade"`
+}
+
+type StudentInfo struct {
+	ID        uint   `json:"ID"`
+	FirstName string `json:"FirstName"`
+	LastName  string `json:"LastName"`
+}
+
+type RegistrationGradeReport struct {
+	ID         uint          `json:"ID"`
+	Status     string        `json:"Status"`
+	EnrolledAt *time.Time    `json:"EnrolledAt"`
+	Student    StudentInfo   `json:"Student"`
+	Grades     GradesSummary `json:"Grades"`
+}
+
 func ListGrades(c *fiber.Ctx) error {
-	query := db.DB().Preload("Category").Preload("StudentClass")
-
-	if categoryID, err := ParseOptionalUintQueryParam(c, "category_id"); err != nil {
+	studentClassId, err := ParseUintQueryParam(c, "student_class_id", true)
+	if err != nil {
 		return ReturnBadRequest(c, err.Error())
-	} else if categoryID != nil {
-		query = query.Where("category_id = ?", *categoryID)
 	}
 
-	if registrationID, err := ParseOptionalUintQueryParam(c, "registration_id"); err != nil {
+	userEmail, err := GetUserEmailFromToken(c)
+	if err != nil {
 		return ReturnBadRequest(c, err.Error())
-	} else if registrationID != nil {
-		query = query.Where("registration_id = ?", *registrationID)
 	}
 
-	if studentClassID, err := ParseOptionalUintQueryParam(c, "student_class_id"); err != nil {
-		return ReturnBadRequest(c, err.Error())
-	} else if studentClassID != nil {
-		query = query.Where("student_class_id = ?", *studentClassID)
+	courseID, err := db.GetStudentClassCourseID(studentClassId)
+	if err != nil {
+		return ReturnBadRequest(c, "Student class not found")
+	}
+
+	if !db.IsTeacherEmailBelongToCourse(userEmail, int(courseID)) {
+		return ReturnUnauthorized(c, "User does not have permission to access course")
+	}
+
+	registrations := db.ListRegistrations(int(studentClassId))
+
+	var studentClass db.StudentClass
+	if err := db.DB().First(&studentClass, studentClassId).Error; err != nil {
+		return ReturnBadRequest(c, "Student class not found")
+	}
+
+	var formula db.GradingFormula
+	formulaQuery := db.DB().Where("course_id = ? AND is_active = ?", courseID, true)
+	if studentClass.LevelId > 0 {
+		formulaQuery = formulaQuery.Where("level_id = ?", studentClass.LevelId)
+	} else {
+		formulaQuery = formulaQuery.Where("level_id IS NULL")
+	}
+	formulaQuery.First(&formula)
+
+	formulaCategoryNames := extractFormulaCategoryNames(formula, studentClass.LevelId)
+	examCategoryNames := extractExamCategoryNames(formula, studentClass.LevelId)
+
+	allCategories := db.FindActiveCategories(courseID, studentClass.LevelId)
+
+	var categories []db.EvaluationCategory
+	if len(formulaCategoryNames) > 0 {
+		for _, cat := range allCategories {
+			if formulaCategoryNames[cat.Name] {
+				categories = append(categories, cat)
+			}
+		}
+	} else {
+		categories = allCategories
+	}
+
+	examCategoryIDs := make(map[uint]bool)
+	for _, cat := range allCategories {
+		if examCategoryNames[cat.Name] {
+			examCategoryIDs[cat.ID] = true
+		}
+	}
+
+	var allGrades []db.Grade
+	db.DB().Where("student_class_id = ?", studentClassId).Find(&allGrades)
+
+	gradesByRegAndCat := make(map[uint]map[uint][]db.Grade)
+	for _, grade := range allGrades {
+		if gradesByRegAndCat[grade.RegistrationID] == nil {
+			gradesByRegAndCat[grade.RegistrationID] = make(map[uint][]db.Grade)
+		}
+		gradesByRegAndCat[grade.RegistrationID][grade.CategoryID] = append(
+			gradesByRegAndCat[grade.RegistrationID][grade.CategoryID], grade)
+	}
+
+	calculator := services.NewGradingCalculator()
+	var results []RegistrationGradeReport
+
+	for _, reg := range registrations {
+		report := RegistrationGradeReport{
+			ID:         reg.ID,
+			Status:     reg.Status,
+			EnrolledAt: reg.EnrolledAt,
+			Student: StudentInfo{
+				ID:        reg.Student.ID,
+				FirstName: reg.Student.FirstName,
+				LastName:  reg.Student.LastName,
+			},
+		}
+
+		var subjects []SubjectGrade
+		for _, cat := range categories {
+			grades := gradesByRegAndCat[reg.ID][cat.ID]
+
+			evaluationsDone := 0
+			var totalScore float64
+			for _, g := range grades {
+				if g.Score != nil && !g.IsExcused {
+					evaluationsDone++
+					totalScore += *g.Score
+				}
+			}
+
+			var marks float64
+			if evaluationsDone > 0 {
+				marks = math.Round(totalScore/float64(evaluationsDone)*100) / 100
+			}
+
+			subjects = append(subjects, SubjectGrade{
+				Name:             cat.Name,
+				Marks:            marks,
+				EvaluationsDone:  evaluationsDone,
+				EvaluationsTotal: cat.Cardinality,
+			})
+		}
+
+		report.Grades.Subjects = subjects
+
+		hasExamGrade := len(examCategoryIDs) == 0
+		if !hasExamGrade {
+			for catID := range examCategoryIDs {
+				for _, g := range gradesByRegAndCat[reg.ID][catID] {
+					if g.Score != nil {
+						hasExamGrade = true
+						break
+					}
+				}
+				if hasExamGrade {
+					break
+				}
+			}
+		}
+
+		formulaResult, err := calculator.CalculateFormulaDetailed(reg.ID, studentClassId, courseID)
+		if err == nil && formulaResult != nil {
+			if hasExamGrade {
+				report.Grades.FinalGrade = &formulaResult.FinalScore
+			}
+
+			for _, stage := range formulaResult.Stages {
+				if stage.Name == "MF" {
+					for _, comp := range stage.Components {
+						if comp.Name != "CF" && comp.Name != "MAC" {
+							report.Grades.ExamGrade = comp.Score
+						}
+					}
+				} else {
+					if report.Grades.FrequencyGrade == 0 {
+						report.Grades.FrequencyGrade = stage.Score
+					}
+				}
+			}
+		}
+
+		results = append(results, report)
+	}
+
+	return c.JSON(results)
+}
+
+func extractFormulaCategoryNames(formula db.GradingFormula, levelId int) map[string]bool {
+	names := make(map[string]bool)
+	if formula.FormulaConfig == nil {
+		return names
+	}
+
+	config := formula.FormulaConfig
+
+	formulaType, _ := config["type"].(string)
+
+	var stagesRaw interface{}
+	switch formulaType {
+	case "multi_stage_level_based":
+		levelsRaw, ok := config["levels"].(map[string]interface{})
+		if !ok {
+			return names
+		}
+		levelKey := fmt.Sprintf("%d", levelId)
+		levelConfig, ok := levelsRaw[levelKey].(map[string]interface{})
+		if !ok {
+			return names
+		}
+		stagesRaw = levelConfig["stages"]
+	case "multi_stage":
+		stagesRaw = config["stages"]
+	case "weighted_average":
+		categoriesRaw, ok := config["categories"].(map[string]interface{})
+		if ok {
+			for name := range categoriesRaw {
+				names[name] = true
+			}
+		}
+		return names
+	default:
+		return names
+	}
+
+	stages, ok := stagesRaw.(map[string]interface{})
+	if !ok {
+		return names
+	}
+
+	stageNames := make(map[string]bool)
+	for stageName := range stages {
+		stageNames[stageName] = true
+	}
+
+	for _, stageDataRaw := range stages {
+		stageData, ok := stageDataRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		stageType, _ := stageData["type"].(string)
+		switch stageType {
+		case "weighted_average":
+			categoriesRaw, ok := stageData["categories"].(map[string]interface{})
+			if ok {
+				for name := range categoriesRaw {
+					names[name] = true
+				}
+			}
+		case "simple_average":
+			componentsRaw, _ := stageData["components"].([]interface{})
+			for _, compRaw := range componentsRaw {
+				compName, _ := compRaw.(string)
+				if !stageNames[compName] {
+					names[compName] = true
+				}
+			}
+		}
+	}
+
+	return names
+}
+
+type EvaluationItem struct {
+	ID    int      `json:"id"`
+	Marks *float64 `json:"marks"`
+	Date  *string  `json:"date"`
+}
+
+type CategoryGrades struct {
+	ID          uint             `json:"id"`
+	Name        string           `json:"name"`
+	Evaluations []EvaluationItem `json:"evaluations"`
+}
+
+type ExamInfo struct {
+	ID    uint     `json:"id"`
+	Marks *float64 `json:"marks"`
+	Date  *string  `json:"date"`
+}
+
+type RegistrationGradesResponse struct {
+	Categories     []CategoryGrades `json:"categories"`
+	Exam           *ExamInfo        `json:"exam"`
+	FrequencyGrade float64          `json:"frequencyGrade"`
+	FinalGrade     *float64         `json:"finalGrade"`
+}
+
+func GetGradesOfRegistration(c *fiber.Ctx) error {
+	parsed, err := strconv.ParseUint(c.Params("registrationId"), 10, 64)
+	if err != nil {
+		return ReturnBadRequest(c, "invalid registrationId")
+	}
+	registrationId := uint(parsed)
+
+	var registration db.Registration
+	if err := db.DB().Preload("StudentClass").First(&registration, registrationId).Error; err != nil {
+		return ReturnNotFound(c, "registration not found")
+	}
+
+	studentClassID := registration.StudentClassID
+	courseID := registration.StudentClass.CourseID
+	levelID := registration.StudentClass.LevelId
+
+	var formula db.GradingFormula
+	formulaQuery := db.DB().Where("course_id = ? AND is_active = ?", courseID, true)
+	if levelID > 0 {
+		formulaQuery = formulaQuery.Where("level_id = ?", levelID)
+	} else {
+		formulaQuery = formulaQuery.Where("level_id IS NULL")
+	}
+	formulaQuery.First(&formula)
+
+	examCategoryNames := extractExamCategoryNames(formula, levelID)
+	formulaCategoryNames := extractFormulaCategoryNames(formula, levelID)
+
+	allCategories := db.FindActiveCategories(courseID, levelID)
+
+	var categories []db.EvaluationCategory
+	if len(formulaCategoryNames) > 0 {
+		for _, cat := range allCategories {
+			if formulaCategoryNames[cat.Name] {
+				categories = append(categories, cat)
+			}
+		}
+	} else {
+		categories = allCategories
 	}
 
 	var grades []db.Grade
-	if err := query.Find(&grades).Error; err != nil {
-		return ReturnInternalError(c, "failed to fetch grades")
+	db.DB().Where("student_class_id = ? AND registration_id = ?", studentClassID, registrationId).
+		Order("created_at ASC").Find(&grades)
+
+	gradesByCat := make(map[uint][]db.Grade)
+	for _, g := range grades {
+		gradesByCat[g.CategoryID] = append(gradesByCat[g.CategoryID], g)
 	}
 
-	return c.JSON(grades)
+	var response RegistrationGradesResponse
+	var examInfo *ExamInfo
+
+	for _, cat := range categories {
+		if examCategoryNames[cat.Name] {
+			catGrades := gradesByCat[cat.ID]
+			exam := &ExamInfo{ID: cat.ID}
+			if len(catGrades) > 0 && catGrades[0].Score != nil {
+				exam.Marks = catGrades[0].Score
+				if catGrades[0].Date != nil {
+					dateStr := catGrades[0].Date.Format("2006-01-02")
+					exam.Date = &dateStr
+				}
+			}
+			examInfo = exam
+			continue
+		}
+
+		catGrades := gradesByCat[cat.ID]
+		var evaluations []EvaluationItem
+		for i := 0; i < cat.Cardinality; i++ {
+			eval := EvaluationItem{ID: 0}
+			if i < len(catGrades) && catGrades[i].Score != nil && !catGrades[i].IsExcused {
+				eval.Marks = catGrades[i].Score
+				eval.ID = int(catGrades[i].ID)
+				if catGrades[i].Date != nil {
+					dateStr := catGrades[i].Date.Format("2006-01-02")
+					eval.Date = &dateStr
+				}
+			}
+			evaluations = append(evaluations, eval)
+		}
+		response.Categories = append(response.Categories, CategoryGrades{
+			ID:          cat.ID,
+			Name:        cat.Name,
+			Evaluations: evaluations,
+		})
+	}
+
+	response.Exam = examInfo
+
+	hasExamGrade := len(examCategoryNames) == 0 || (examInfo != nil && examInfo.Marks != nil)
+
+	calculator := services.NewGradingCalculator()
+	formulaResult, calcErr := calculator.CalculateFormulaDetailed(registrationId, studentClassID, courseID)
+	if calcErr == nil && formulaResult != nil {
+		if hasExamGrade {
+			response.FinalGrade = &formulaResult.FinalScore
+		}
+
+		for _, stage := range formulaResult.Stages {
+			if stage.Name == "MF" {
+				continue
+			}
+			if response.FrequencyGrade == 0 {
+				response.FrequencyGrade = stage.Score
+			}
+		}
+	}
+
+	return c.JSON(response)
 }
 
-func GetGrade(c *fiber.Ctx) error {
-	id := c.Params("id")
-	var grade db.Grade
-
-	if err := db.DB().Preload("Category").Preload("StudentClass").First(&grade, id).Error; err != nil {
-		return ReturnNotFound(c, "grade not found")
+func extractExamCategoryNames(formula db.GradingFormula, levelId int) map[string]bool {
+	names := make(map[string]bool)
+	if formula.FormulaConfig == nil {
+		return names
 	}
 
-	return c.JSON(grade)
+	config := formula.FormulaConfig
+	formulaType, _ := config["type"].(string)
+
+	var stagesRaw interface{}
+	switch formulaType {
+	case "multi_stage_level_based":
+		levelsRaw, ok := config["levels"].(map[string]interface{})
+		if !ok {
+			return names
+		}
+		levelKey := fmt.Sprintf("%d", levelId)
+		levelConfig, ok := levelsRaw[levelKey].(map[string]interface{})
+		if !ok {
+			return names
+		}
+		stagesRaw = levelConfig["stages"]
+	case "multi_stage":
+		stagesRaw = config["stages"]
+	default:
+		return names
+	}
+
+	stages, ok := stagesRaw.(map[string]interface{})
+	if !ok {
+		return names
+	}
+
+	stageNames := make(map[string]bool)
+	for stageName := range stages {
+		stageNames[stageName] = true
+	}
+
+	mfRaw, ok := stages["MF"]
+	if !ok {
+		return names
+	}
+	mfData, ok := mfRaw.(map[string]interface{})
+	if !ok {
+		return names
+	}
+
+	componentsRaw, _ := mfData["components"].([]interface{})
+	for _, compRaw := range componentsRaw {
+		compName, _ := compRaw.(string)
+		if !stageNames[compName] {
+			names[compName] = true
+		}
+	}
+
+	return names
 }
 
 func CreateGrade(c *fiber.Ctx) error {
-	var grade db.Grade
+	parsed, err := strconv.ParseUint(c.Params("registrationId"), 10, 64)
+	if err != nil {
+		return ReturnBadRequest(c, "invalid registrationId")
+	}
+	registrationId := uint(parsed)
 
-	if err := c.BodyParser(&grade); err != nil {
+	var body struct {
+		EvaluationCategoryID uint    `json:"evaluation_category_id"`
+		Marks                float64 `json:"marks"`
+		Date                 string  `json:"date"`
+	}
+
+	if err := c.BodyParser(&body); err != nil {
 		return ReturnBadRequest(c, "invalid request body")
 	}
 
-	if grade.CategoryID == 0 {
-		return ReturnBadRequest(c, "category_id is required")
+	if body.EvaluationCategoryID == 0 {
+		return ReturnBadRequest(c, "evaluation_category_id is required")
 	}
 
-	if grade.RegistrationID == 0 {
-		return ReturnBadRequest(c, "registration_id is required")
+	if body.Marks < 0 || body.Marks > 20 {
+		return ReturnBadRequest(c, "marks must be between 0 and 20")
+	}
+
+	if body.Date == "" {
+		return ReturnBadRequest(c, "date is required")
+	}
+	parsedDate, err := time.Parse("2006-01-02", body.Date)
+	if err != nil {
+		return ReturnBadRequest(c, "invalid date format, use yyyy-mm-dd")
 	}
 
 	var registration db.Registration
-	if err := db.DB().Preload("StudentClass").First(&registration, grade.RegistrationID).Error; err != nil {
+	if err := db.DB().Preload("StudentClass").First(&registration, registrationId).Error; err != nil {
 		return ReturnNotFound(c, "registration not found")
 	}
 
 	var category db.EvaluationCategory
-	if err := db.DB().First(&category, grade.CategoryID).Error; err != nil {
+	if err := db.DB().First(&category, body.EvaluationCategoryID).Error; err != nil {
 		return ReturnNotFound(c, "evaluation category not found")
 	}
 
-	if category.CourseID != registration.StudentClass.CourseID {
-		return ReturnBadRequest(c, "evaluation category course does not match student class course")
+	var existingCount int64
+	db.DB().Model(&db.Grade{}).Where(
+		"category_id = ? AND registration_id = ?",
+		body.EvaluationCategoryID, registrationId,
+	).Count(&existingCount)
+
+	if int(existingCount) >= category.Cardinality {
+		return ReturnBadRequest(c, fmt.Sprintf("cannot create grade: all %d expected evaluations for this category are already registered", category.Cardinality))
 	}
 
-	var existingGradesCount int64
-	db.DB().Model(&db.Grade{}).Where("category_id = ? AND student_class_id = ? AND registration_id = ?",
-		grade.CategoryID, registration.StudentClassID, grade.RegistrationID).Count(&existingGradesCount)
-
-	if int(existingGradesCount) >= category.Cardinality {
-		return ReturnBadRequest(c, fmt.Sprintf("cannot create more grades: category cardinality limit (%d) reached", category.Cardinality))
+	userEmail, err := GetUserEmailFromToken(c)
+	if err != nil {
+		return ReturnUnauthorized(c, err.Error())
 	}
-
-	if grade.Score != nil {
-		if *grade.Score < 0 {
-			return ReturnBadRequest(c, "score cannot be negative")
-		}
-		if *grade.Score > category.MaxScore {
-			return ReturnBadRequest(c, fmt.Sprintf("score cannot exceed max_score: %g", category.MaxScore))
-		}
-	}
-
-	grade.StudentClassID = registration.StudentClassID
-	grade.Name = category.Name
-	grade.MaxScore = category.MaxScore
 
 	calculator := services.NewGradingCalculator()
-	if grade.Score != nil && !grade.IsExcused {
-		percentage := calculator.CalculatePercentage(*grade.Score, grade.MaxScore)
-		grade.Percentage = &percentage
+	percentage := calculator.CalculatePercentage(body.Marks, category.MaxScore)
+
+	now := time.Now()
+	evalNumber := int(existingCount) + 1
+	name := fmt.Sprintf("%s %d", category.Name, evalNumber)
+
+	grade := db.Grade{
+		CategoryID:     body.EvaluationCategoryID,
+		StudentClassID: registration.StudentClassID,
+		RegistrationID: registrationId,
+		Name:           name,
+		Date:           &parsedDate,
+		MaxScore:       category.MaxScore,
+		Score:          &body.Marks,
+		Percentage:     &percentage,
+		GradedAt:       &now,
+		CreatedAt:      now,
+		CreatedBy:      &userEmail,
 	}
 
 	if err := db.DB().Create(&grade).Error; err != nil {
@@ -115,58 +555,77 @@ func CreateGrade(c *fiber.Ctx) error {
 }
 
 func UpdateGrade(c *fiber.Ctx) error {
-	id := c.Params("id")
-	var grade db.Grade
+	parsedRegID, err := strconv.ParseUint(c.Params("registrationId"), 10, 64)
+	if err != nil {
+		return ReturnBadRequest(c, "invalid registrationId")
+	}
+	registrationId := uint(parsedRegID)
 
-	if err := db.DB().Preload("Category").First(&grade, id).Error; err != nil {
-		return ReturnNotFound(c, "grade not found")
+	parsedGradeID, err := strconv.ParseUint(c.Params("gradeId"), 10, 64)
+	if err != nil {
+		return ReturnBadRequest(c, "invalid gradeId")
+	}
+	gradeId := uint(parsedGradeID)
+
+	var body struct {
+		Marks *float64 `json:"marks"`
+		Date  *string  `json:"date"`
 	}
 
-	oldScore := grade.Score
-
-	var updates struct {
-		Score     *float64 `json:"score"`
-		UpdatedBy *string  `json:"updated_by,omitempty"`
-	}
-
-	if err := c.BodyParser(&updates); err != nil {
+	if err := c.BodyParser(&body); err != nil {
 		return ReturnBadRequest(c, "invalid request body")
 	}
 
-	if updates.Score == nil {
-		return ReturnBadRequest(c, "score is required")
+	if body.Marks == nil && body.Date == nil {
+		return ReturnBadRequest(c, "at least one of marks or date is required")
 	}
 
-	if *updates.Score < 0 {
-		return ReturnBadRequest(c, "score cannot be negative")
+	if body.Marks != nil && (*body.Marks < 0 || *body.Marks > 20) {
+		return ReturnBadRequest(c, "marks must be between 0 and 20")
 	}
 
-	if *updates.Score > grade.Category.MaxScore {
-		return ReturnBadRequest(c, fmt.Sprintf("score cannot exceed max_score: %g", grade.Category.MaxScore))
+	var parsedDate *time.Time
+	if body.Date != nil {
+		d, err := time.Parse("2006-01-02", *body.Date)
+		if err != nil {
+			return ReturnBadRequest(c, "invalid date format, use yyyy-mm-dd")
+		}
+		parsedDate = &d
 	}
 
-	calculator := services.NewGradingCalculator()
-	grade.Score = updates.Score
-
-	if !grade.IsExcused {
-		percentage := calculator.CalculatePercentage(*updates.Score, grade.MaxScore)
-		grade.Percentage = &percentage
+	var grade db.Grade
+	if err := db.DB().Preload("Category").First(&grade, gradeId).Error; err != nil {
+		return ReturnNotFound(c, "grade not found")
 	}
 
-	if grade.GradedAt == nil {
+	if grade.RegistrationID != registrationId {
+		return ReturnNotFound(c, "grade not found for this registration")
+	}
+
+	userEmail, err := GetUserEmailFromToken(c)
+	if err != nil {
+		return ReturnUnauthorized(c, err.Error())
+	}
+
+	if body.Marks != nil {
+		calculator := services.NewGradingCalculator()
+		grade.Score = body.Marks
+		if !grade.IsExcused {
+			percentage := calculator.CalculatePercentage(*body.Marks, grade.MaxScore)
+			grade.Percentage = &percentage
+		}
 		now := time.Now()
 		grade.GradedAt = &now
 	}
 
-	if updates.UpdatedBy != nil {
-		grade.UpdatedBy = updates.UpdatedBy
+	if parsedDate != nil {
+		grade.Date = parsedDate
 	}
+
+	grade.UpdatedBy = &userEmail
 
 	if err := db.DB().Save(&grade).Error; err != nil {
 		return ReturnInternalError(c, "failed to update grade")
-	}
-
-	if oldScore != updates.Score {
 	}
 
 	db.DB().Preload("Category").Preload("StudentClass").First(&grade, grade.ID)
@@ -312,12 +771,12 @@ func GetGradeStatistics(c *fiber.Ctx) error {
 		return c.JSON(stats)
 	}
 
-	courseID, err := db.GetStudentClassCourseID(*studentClassID)
-	if err != nil {
-		return ReturnInternalError(c, "failed to get course ID")
+	var sc db.StudentClass
+	if err := db.DB().First(&sc, *studentClassID).Error; err != nil {
+		return ReturnInternalError(c, "student class not found")
 	}
 
-	allStats, err := calculator.GetAllCategoryStatistics(*studentClassID, *registrationID, courseID)
+	allStats, err := calculator.GetAllCategoryStatistics(*studentClassID, *registrationID, sc.CourseID, sc.LevelId)
 	if err != nil {
 		return ReturnInternalError(c, "failed to fetch all statistics")
 	}

@@ -34,6 +34,8 @@ func setupTestDB() (*gorm.DB, error) {
 		&db.Registration{},
 		&db.Attendance{},
 		&db.CertificateLog{},
+		&db.EvaluationCategory{},
+		&db.Grade{},
 	)
 	if err != nil {
 		return nil, err

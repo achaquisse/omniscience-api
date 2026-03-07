@@ -291,13 +291,7 @@ func (gc *GradingCalculator) CalculateFormulaDetailed(
 		return nil, errors.New("grading formula not found for course and level")
 	}
 
-	var categories []db.EvaluationCategory
-	err = db.DB().Where("course_id = ? AND is_active = ?", courseID, true).
-		Order("display_order ASC").
-		Find(&categories).Error
-	if err != nil {
-		return nil, err
-	}
+	categories := db.FindActiveCategories(courseID, levelID)
 
 	if len(categories) == 0 {
 		return nil, errors.New("no evaluation categories found for course")
@@ -627,14 +621,9 @@ func (gc *GradingCalculator) GetAllCategoryStatistics(
 	studentClassID uint,
 	registrationID uint,
 	courseID uint,
+	levelId int,
 ) ([]CategoryGradeStatistics, error) {
-	var categories []db.EvaluationCategory
-	err := db.DB().Where("course_id = ? AND is_active = ?", courseID, true).
-		Order("display_order ASC").
-		Find(&categories).Error
-	if err != nil {
-		return nil, err
-	}
+	categories := db.FindActiveCategories(courseID, levelId)
 
 	var allStats []CategoryGradeStatistics
 

@@ -158,6 +158,41 @@ components:
         records_processed:
           type: integer
 
+    TriggerAttendanceReportsResponse:
+      type: object
+      properties:
+        dry_run:
+          type: boolean
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        total_messages:
+          type: integer
+        messages_planned:
+          type: array
+          items:
+            type: object
+          description: Present only when dry_run is true
+        success_count:
+          type: integer
+          description: Present only when dry_run is false
+        failure_count:
+          type: integer
+          description: Present only when dry_run is false
+        messages_sent:
+          type: array
+          items:
+            type: object
+          description: Present only when dry_run is false
+        messages_failed:
+          type: array
+          items:
+            type: object
+          description: Present only when dry_run is false
+
     AttendanceReport:
       type: object
       properties:
@@ -348,6 +383,11 @@ components:
         course_id:
           type: integer
           format: uint
+        level_id:
+          type: integer
+          format: uint
+          nullable: true
+          description: Optional level ID. Categories can be scoped per course+level combination.
         name:
           type: string
         description:
@@ -382,6 +422,11 @@ components:
         course_id:
           type: integer
           format: uint
+        level_id:
+          type: integer
+          format: uint
+          nullable: true
+          description: Optional level ID to scope the category to a specific level
         name:
           type: string
         description:
@@ -602,18 +647,45 @@ components:
         - category_id
         - registration_id
 
-    UpdateGradeRequest:
+    CreateGradeRequest:
       type: object
       properties:
-        score:
+        evaluation_category_id:
+          type: integer
+          format: uint
+          description: ID of the evaluation category
+        marks:
           type: number
           format: float
-          description: Updated score for the student. Must be >= 0 and <= category max_score.
-        updated_by:
+          description: Score achieved by the student. Must be between 0 and 20 inclusive.
+          minimum: 0
+          maximum: 20
+        date:
           type: string
-          description: Identifier of the person updating the grade
+          format: date
+          description: Date of the evaluation in yyyy-mm-dd format
+          example: "2024-06-15"
       required:
-        - score
+        - evaluation_category_id
+        - marks
+        - date
+
+    UpdateGradeRequest:
+      type: object
+      description: At least one of marks or date must be provided.
+      properties:
+        marks:
+          type: number
+          format: float
+          description: Updated marks for the grade. Must be between 0 and 20 inclusive.
+          minimum: 0
+          maximum: 20
+          example: 17.5
+        date:
+          type: string
+          format: date
+          description: Date of the evaluation in yyyy-mm-dd format.
+          example: "2024-06-15"
 
     BatchGradeItem:
       type: object
@@ -854,6 +926,85 @@ components:
           items:
             $ref: '#/components/schemas/StageResult'
 
+    SubjectGrade:
+      type: object
+      properties:
+        Name:
+          type: string
+          description: Name of the evaluation category (subject)
+        Marks:
+          type: number
+          format: float
+          description: Average score of recorded non-excused grades
+        EvaluationsDone:
+          type: integer
+          description: Number of non-excused grades recorded
+        EvaluationsTotal:
+          type: integer
+          description: Total evaluations expected (category cardinality)
+      required:
+        - Name
+        - Marks
+        - EvaluationsDone
+        - EvaluationsTotal
+
+    GradesSummary:
+      type: object
+      properties:
+        Subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectGrade'
+        FrequencyGrade:
+          type: number
+          format: float
+          description: Score from the first non-MF stage of the grading formula
+        ExamGrade:
+          type: number
+          format: float
+          description: Score from the non-frequency component of the MF stage
+        FinalGrade:
+          type: number
+          format: float
+          description: Final calculated score from the grading formula
+
+    StudentInfo:
+      type: object
+      properties:
+        ID:
+          type: integer
+          format: uint
+        FirstName:
+          type: string
+        LastName:
+          type: string
+      required:
+        - ID
+        - FirstName
+        - LastName
+
+    RegistrationGradeReport:
+      type: object
+      properties:
+        ID:
+          type: integer
+          format: uint
+        Status:
+          type: string
+        EnrolledAt:
+          type: string
+          format: date-time
+          nullable: true
+        Student:
+          $ref: '#/components/schemas/StudentInfo'
+        Grades:
+          $ref: '#/components/schemas/GradesSummary'
+      required:
+        - ID
+        - Status
+        - Student
+        - Grades
+
     CategoryGradeStatistics:
       type: object
       properties:
@@ -892,6 +1043,69 @@ components:
         student_class_id:
           type: integer
           format: uint
+
+    EvaluationItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        marks:
+          type: number
+          format: float
+          nullable: true
+        date:
+          type: string
+          format: date
+          nullable: true
+
+    CategoryGrades:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: uint
+        name:
+          type: string
+        evaluations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluationItem'
+      required:
+        - id
+        - name
+        - evaluations
+
+    ExamInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: uint
+        marks:
+          type: number
+          format: float
+          nullable: true
+        date:
+          type: string
+          format: date
+          nullable: true
+
+    RegistrationGradesResponse:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryGrades'
+        exam:
+          $ref: '#/components/schemas/ExamInfo'
+          nullable: true
+        frequencyGrade:
+          type: number
+          format: float
+        finalGrade:
+          type: number
+          format: float
 
 security:
   - bearerAuth: []
@@ -1201,134 +1415,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /grades/categories:
-    get:
-      summary: List evaluation categories
-      description: Lists all evaluation categories for a course
-      operationId: listEvaluationCategories
+  /attendance/trigger-reports:
+    post:
+      summary: Trigger attendance reports
+      description: |
+        Sends attendance report notifications for a given date range.
+        If start_date and end_date are not provided, defaults to the previous week (Sunday to Saturday).
+        When dry_run is true, returns the planned messages without sending them.
+      operationId: triggerAttendanceReports
       tags:
-        - Grade Management
+        - Attendance
       security:
         - bearerAuth: []
       parameters:
-        - name: course_id
+        - name: dry_run
           in: query
-          description: ID of the course
-          required: true
-          schema:
-            type: integer
-            format: uint
-        - name: include_inactive
-          in: query
-          description: Include inactive categories
+          description: If true, returns planned messages without sending them
           required: false
           schema:
             type: boolean
             default: false
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EvaluationCategory'
-        '400':
-          description: Invalid request parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /grades/formulas:
-    get:
-      summary: Get grading formula
-      description: Get the active grading formula for a course
-      operationId: getGradingFormula
-      tags:
-        - Grade Management
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: course_id
+        - name: start_date
           in: query
-          description: ID of the course
-          required: true
-          schema:
-            type: integer
-            format: uint
-        - name: level_id
-          in: query
-          description: Optional level ID. If provided, returns formula for that level. If omitted, returns formula where level_id is NULL.
+          description: Start date of the report period (yyyy-mm-dd). Defaults to last Sunday if omitted.
           required: false
           schema:
-            type: integer
-            format: uint
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GradingFormula'
-        '404':
-          description: Grading formula not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '400':
-          description: Invalid request parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /grades/formulas/results:
-    get:
-      summary: Get formula calculation results
-      description: Calculate and return detailed formula results for a student registration
-      operationId: getFormulaResults
-      tags:
-        - Grade Management
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: registration_id
+            type: string
+            format: date
+            example: "2024-01-01"
+        - name: end_date
           in: query
-          description: ID of the student registration
-          required: true
+          description: End date of the report period (yyyy-mm-dd). Defaults to last Saturday if omitted.
+          required: false
           schema:
-            type: integer
-            format: uint
+            type: string
+            format: date
+            example: "2024-01-07"
       responses:
         '200':
-          description: Successful response
+          description: Attendance reports processed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FormulaDetailedResult'
+                $ref: '#/components/schemas/TriggerAttendanceReportsResponse'
         '400':
-          description: Invalid request parameters
+          description: Invalid date format
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized
+          description: Unauthorized - Missing or invalid token
           content:
             application/json:
               schema:
@@ -1342,32 +1479,22 @@ paths:
 
   /grades:
     get:
-      summary: List grades
-      description: List grades with optional filters
+      summary: List grades report
+      description: |
+        Returns a grade report for all registrations in a student class.
+        Includes per-subject marks (filtered by the grading formula for the class level),
+        frequency grade, exam grade, and final grade calculated from the grading formula.
+        Validates that the authenticated user has access to the course.
       operationId: listGrades
       tags:
         - Grade Management
       security:
         - bearerAuth: []
       parameters:
-        - name: category_id
-          in: query
-          description: Filter by evaluation category
-          required: false
-          schema:
-            type: integer
-            format: uint
-        - name: registration_id
-          in: query
-          description: Filter by student registration
-          required: false
-          schema:
-            type: integer
-            format: uint
         - name: student_class_id
           in: query
-          description: Filter by class
-          required: false
+          description: ID of the student class (required)
+          required: true
           schema:
             type: integer
             format: uint
@@ -1379,43 +1506,52 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Grade'
+                  $ref: '#/components/schemas/RegistrationGradeReport'
         '400':
-          description: Invalid request parameters
+          description: Invalid request parameters or student class not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized
+          description: Unauthorized - user does not have permission to access the course
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /grades/{registrationId}:
     post:
-      summary: Create grade
+      summary: Create a grade for a registration
       description: |
-        Create a single grade for a student.
-        
+        Record a new evaluation grade for a specific student registration.
+
         Validations:
-        - category_id and registration_id are required
-        - Category course must match student class course
-        - Cannot exceed category cardinality limit
-        - Score must be >= 0
-        - Score must be <= category.max_score
-        - Automatically calculates percentage
-        - Automatically recalculates final grade
+        - `evaluation_category_id` must reference an existing active EvaluationCategory
+        - `marks` must be between 0 and 20 (inclusive)
+        - `date` must be a valid date in yyyy-mm-dd format
+        - The number of existing grades for the given registration + category must be less than the category's cardinality (no over-recording)
+
+        On success the grade is persisted in the EvaluationGrade table and returned.
       operationId: createGrade
       tags:
         - Grade Management
       security:
         - bearerAuth: []
+      parameters:
+        - name: registrationId
+          in: path
+          description: Registration ID
+          required: true
+          schema:
+            type: integer
+            format: uint
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GradeRequest'
+              $ref: '#/components/schemas/CreateGradeRequest'
       responses:
         '201':
           description: Grade created successfully
@@ -1424,79 +1560,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Grade'
         '400':
-          description: Invalid request body or validation error (course mismatch, cardinality limit, score range)
+          description: Invalid request body or validation error (marks out of range, invalid date, category full)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Registration or category not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /grades/statistics:
-    get:
-      summary: Get grade statistics
-      description: |
-        Get statistics about recorded, excused, and missing grades for evaluation categories.
-        
-        Returns statistics showing:
-        - How many grades have been recorded
-        - How many grades are excused
-        - How many grades are missing (based on cardinality)
-        - Average score including zeros for missing grades
-        
-        Can fetch statistics for:
-        - A single category (provide category_id)
-        - All categories (omit category_id)
-      operationId: getGradeStatistics
-      tags:
-        - Grade Management
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: category_id
-          in: query
-          description: Filter by specific evaluation category (optional)
-          required: false
-          schema:
-            type: integer
-            format: uint
-        - name: student_class_id
-          in: query
-          description: Student class ID (required)
-          required: true
-          schema:
-            type: integer
-            format: uint
-        - name: registration_id
-          in: query
-          description: Student registration ID (required)
-          required: true
-          schema:
-            type: integer
-            format: uint
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: '#/components/schemas/CategoryGradeStatistics'
-                  - type: array
-                    items:
-                      $ref: '#/components/schemas/CategoryGradeStatistics'
-        '400':
-          description: Invalid request parameters
+          description: Registration or evaluation category not found
           content:
             application/json:
               schema:
@@ -1513,20 +1583,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
-  /grades/{id}:
     get:
-      summary: Get grade
-      description: Get a specific grade
-      operationId: getGrade
+      summary: Get grades of a registration
+      description: |
+        Returns all grades for a specific registration, grouped by evaluation category.
+        Categories are split into regular frequency categories and exam.
+        Also returns computed frequencyGrade and finalGrade based on the active grading formula.
+      operationId: getGradesOfRegistration
       tags:
         - Grade Management
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: registrationId
           in: path
-          description: Grade ID
+          description: Registration ID
           required: true
           schema:
             type: integer
@@ -1537,9 +1608,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Grade'
+                $ref: '#/components/schemas/RegistrationGradesResponse'
+        '400':
+          description: Invalid registrationId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Grade not found
+          description: Registration not found
           content:
             application/json:
               schema:
@@ -1550,23 +1627,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /grades/{registrationId}/{gradeId}:
     patch:
-      summary: Update grade score
+      summary: Update grade marks and/or date
       description: |
-        Partially update a grade (PATCH operation). Only updates the score field.
-        
+        Partially update a grade's marks and/or date for a specific registration.
+
         Validations:
-        - Score must be >= 0
-        - Score must be <= category.max_score
-        - Creates audit history record
-        - Automatically recalculates percentage and final grade
+        - `registrationId` must be a valid positive integer
+        - `gradeId` must be a valid positive integer
+        - At least one of `marks` or `date` must be provided
+        - `marks` must be between 0 and 20 inclusive
+        - `date` must be a valid date in yyyy-mm-dd format
+        - The grade must belong to the given registration
+
+        On success, updates `score`, `date`, `percentage`, `graded_at`, `updated_at`, and `updated_by` (set to the current user's email).
       operationId: updateGrade
       tags:
         - Grade Management
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: registrationId
+          in: path
+          description: Registration ID
+          required: true
+          schema:
+            type: integer
+            format: uint
+        - name: gradeId
           in: path
           description: Grade ID
           required: true
@@ -1587,13 +1676,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Grade'
         '400':
-          description: Invalid request body or validation error
+          description: Invalid path params, missing fields, marks out of range, or invalid date format
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Grade not found
+          description: Grade not found or does not belong to the given registration
           content:
             application/json:
               schema:
@@ -1604,51 +1693,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
-  /grades/batch:
-    post:
-      summary: Batch create grades
-      description: |
-        Create multiple grades at once for an evaluation (e.g., grade all students for Quiz 1).
-        
-        Validations:
-        - category_id and student_class_id are required
-        - Category course must match student class course
-        - Cannot exceed category cardinality limit (validates total: existing + new grades)
-        - Automatically calculates percentage for each grade
-        - Automatically recalculates final grades for affected students
-      operationId: batchCreateGrades
-      tags:
-        - Grade Management
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BatchGradeRequest'
-      responses:
-        '201':
-          description: Grades created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BatchGradeResponse'
-        '400':
-          description: Invalid request body or validation error (course mismatch, cardinality limit exceeded)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Student class or category not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
