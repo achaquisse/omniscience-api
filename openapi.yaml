@@ -966,6 +966,7 @@ components:
         FinalGrade:
           type: number
           format: float
+          nullable: true
           description: Final calculated score from the grading formula
 
     StudentInfo:
@@ -1081,6 +1082,9 @@ components:
         id:
           type: integer
           format: uint
+        gradeId:
+          type: integer
+          format: uint
         marks:
           type: number
           format: float
@@ -1106,6 +1110,7 @@ components:
         finalGrade:
           type: number
           format: float
+          nullable: true
 
 security:
   - bearerAuth: []

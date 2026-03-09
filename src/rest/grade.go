@@ -283,9 +283,10 @@ type CategoryGrades struct {
 }
 
 type ExamInfo struct {
-	ID    uint     `json:"id"`
-	Marks *float64 `json:"marks"`
-	Date  *string  `json:"date"`
+	CategoryID uint     `json:"id"`
+	GradeID    uint     `json:"gradeId"`
+	Marks      *float64 `json:"marks"`
+	Date       *string  `json:"date"`
 }
 
 type RegistrationGradesResponse struct {
@@ -351,9 +352,10 @@ func GetGradesOfRegistration(c *fiber.Ctx) error {
 	for _, cat := range categories {
 		if examCategoryNames[cat.Name] {
 			catGrades := gradesByCat[cat.ID]
-			exam := &ExamInfo{ID: cat.ID}
+			exam := &ExamInfo{CategoryID: cat.ID}
 			if len(catGrades) > 0 && catGrades[0].Score != nil {
 				exam.Marks = catGrades[0].Score
+				exam.GradeID = catGrades[0].ID
 				if catGrades[0].Date != nil {
 					dateStr := catGrades[0].Date.Format("2006-01-02")
 					exam.Date = &dateStr
