@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"skulla-api/db"
 	"skulla-api/rest"
 	"skulla-api/scheduler"
@@ -24,8 +25,7 @@ func main() {
 	}))
 
 	rest.Init(app)
-	err := app.Listen(":8080")
-	if err != nil {
-		return
+	if err := app.Listen(":8080"); err != nil {
+		log.Fatal("Failed to start server:", err)
 	}
 }
